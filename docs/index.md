@@ -11,10 +11,14 @@ submodule so there is one canonical source of truth — no duplicated JS to
 drift.
 
 !!! info "Status — 0.1.0 alpha"
-    API is settled and matches R's `setMargin`/`setBrush`/etc. surface. Six of
-    nineteen R-side numeric transforms (`loess`, `smooth`, `density`,
-    `survfit`, `fit_distribution`, `pairwise_test`) currently raise
-    `NotImplementedError` with a roadmap pointer — they will land before 1.0.
+    API is settled and matches R's `setMargin`/`setBrush`/etc. surface. The
+    JS engine is pinned to a recent R-myIO commit, so the legend, export
+    panel, and all 26 primitive renderers (bar/line/area/point/histogram/
+    hexbin/treemap/donut/gauge/heatmap/calendarHeatmap/candlestick/waterfall/
+    sankey/rangeBar/lollipop/dumbbell/waffle/beeswarm/bump/radar/funnel/
+    parallel/text/bracket) match the R Shiny demo. **Currently not rendering
+    in 0.1.x:** `boxplot`, `violin`, `ridgeline`, `qq`, `comparison`,
+    `survfit`, `histogram_fit` — see [Roadmap](roadmap.md).
 
 ## Get started
 

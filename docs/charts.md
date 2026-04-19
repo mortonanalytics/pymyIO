@@ -18,12 +18,12 @@ is a valid value for `MyIO.add_layer(type=...)`.
 
 | Type | Required mapping | Notes |
 |---|---|---|
-| `regression` | `x_var`, `y_var` | Composite: points + fit line. `options={"method": "lm" | "polynomial"}`. |
-| `rangeBar` | `x_var`, `low_y`, `high_y` | With `transform="mean_ci"` for mean ± 95% CI. |
-| `qq` | `y_var` | Composite; optional `group` for per-group Q-Q. |
-| `boxplot` | `x_var`, `y_var` | Composite: box + outliers (1.5×IQR). |
-| `violin` | `x_var`, `y_var` | Kernel-density silhouettes. |
-| `ridgeline` | `x_var`, `y_var`, `group` | Stacked KDEs per group. |
+| `regression` | `x_var`, `y_var` | Composite: points + fit line. `options={"method": "lm" \| "polynomial"}`. |
+| `rangeBar` | `x_var`, `low_y`, `high_y` | :material-alert: `transform="mean_ci"` doesn't work yet — see [Roadmap](roadmap.md). |
+| `qq` | `y_var` | :material-alert: composite expansion bug — see [Roadmap](roadmap.md). |
+| `boxplot` | `x_var`, `y_var` | :material-alert: composite expansion bug — see [Roadmap](roadmap.md). |
+| `violin` | `x_var`, `y_var` | :material-alert: composite expansion bug — see [Roadmap](roadmap.md). |
+| `ridgeline` | `x_var`, `y_var`, `group` | :material-alert: composite expansion bug — see [Roadmap](roadmap.md). |
 | `comparison` | `x_var`, `y_var` | :material-alert: uses `pairwise_test` — see [Roadmap](roadmap.md). |
 
 ## Specialized
@@ -63,12 +63,15 @@ is a valid value for `MyIO.add_layer(type=...)`.
 | `radar` | `axis`, `value` | Polar plot across named axes. |
 | `funnel` | `stage`, `value` | Sales / pipeline funnel. |
 
-## Deferred (raise `NotImplementedError` in 0.1.0)
+## Deferred / not-yet-rendering in 0.1.x
 
-See [Roadmap](roadmap.md) for the landing schedule.
+See [Roadmap](roadmap.md) for landing targets.
 
 | Type | Reason |
 |---|---|
+| `boxplot`, `violin`, `ridgeline` | Composite expansion sends `type: "boxplot"` / `"violin"` / `"ridgeline"` to the engine, which has no renderer for those primitives. R-myIO's `composite_*()` functions expand these into `bar`/`line`/`point` layers — that R logic still needs to be ported to Python. |
+| `qq` | Transform produces records with literal `x_var`/`y_var` keys that don't match the user's mapping. |
+| `comparison` | Needs `pairwise_test` transform port. |
 | `survfit` | Needs Kaplan-Meier port. |
 | `histogram_fit` | Needs distribution MLE. |
 
