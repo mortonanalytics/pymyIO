@@ -20,10 +20,10 @@ is a valid value for `MyIO.add_layer(type=...)`.
 |---|---|---|
 | `regression` | `x_var`, `y_var` | Composite: points + fit line. `options={"method": "lm" \| "polynomial"}`. |
 | `rangeBar` | `x_var`, `low_y`, `high_y` | :material-alert: `transform="mean_ci"` doesn't work yet — see [Roadmap](roadmap.md). |
-| `qq` | `y_var` | :material-alert: composite expansion bug — see [Roadmap](roadmap.md). |
-| `boxplot` | `x_var`, `y_var` | :material-alert: composite expansion bug — see [Roadmap](roadmap.md). |
-| `violin` | `x_var`, `y_var` | :material-alert: composite expansion bug — see [Roadmap](roadmap.md). |
-| `ridgeline` | `x_var`, `y_var`, `group` | :material-alert: composite expansion bug — see [Roadmap](roadmap.md). |
+| `qq` | `y_var` | Composite: reference line + points (envelope deferred). Pass `mapping["group"]` for per-group Q-Q. |
+| `boxplot` | `x_var`, `y_var` | Composite: IQR rangeBar + whisker points + median + Tukey outliers. |
+| `violin` | `x_var`, `y_var` | Composite: per-group KDE area + optional box / median / raw points. |
+| `ridgeline` | `x_var`, `y_var`, `group` | Composite: stacked density areas with `overlap` factor. |
 | `comparison` | `x_var`, `y_var` | :material-alert: uses `pairwise_test` — see [Roadmap](roadmap.md). |
 
 ## Specialized
@@ -69,11 +69,9 @@ See [Roadmap](roadmap.md) for landing targets.
 
 | Type | Reason |
 |---|---|
-| `boxplot`, `violin`, `ridgeline` | Composite expansion sends `type: "boxplot"` / `"violin"` / `"ridgeline"` to the engine, which has no renderer for those primitives. R-myIO's `composite_*()` functions expand these into `bar`/`line`/`point` layers — that R logic still needs to be ported to Python. |
-| `qq` | Transform produces records with literal `x_var`/`y_var` keys that don't match the user's mapping. |
 | `comparison` | Needs `pairwise_test` transform port. |
-| `survfit` | Needs Kaplan-Meier port. |
-| `histogram_fit` | Needs distribution MLE. |
+| `survfit` | Needs Kaplan-Meier composite expansion (transform exists, expansion not wired). |
+| `histogram_fit` | Needs `composite_histogram_fit` port (transform exists, expansion not wired). |
 
 ## Composite types
 

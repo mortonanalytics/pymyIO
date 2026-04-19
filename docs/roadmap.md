@@ -10,15 +10,16 @@
 | PYMYIO-T04 | `fit_distribution` transform | 0.3.0 | Deferred — needs MLE for normal/gamma/etc. |
 | PYMYIO-T05 | `pairwise_test` transform | 0.3.0 | Deferred — needs t/Wilcoxon. |
 
-## Composite-expansion bugs (block boxplot / violin / ridgeline / qq)
+## Composite-expansion bugs
 
-| ID | Item | Target | Notes |
+| ID | Item | Status | Notes |
 |----|------|--------|-------|
-| PYMYIO-C01 | Port `composite_boxplot()` from R-myIO | 0.2.0 | R expands boxplot into primitive bar/line/point layers; pymyio still emits a single `type: "boxplot"` layer that the engine can't render ("Unknown renderer type: boxplot"). |
-| PYMYIO-C02 | Port `composite_violin()` from R-myIO | 0.2.0 | Same shape as C01. |
-| PYMYIO-C03 | Port `composite_ridgeline()` from R-myIO | 0.2.0 | Same shape as C01. |
-| PYMYIO-C04 | Fix `qq` transform to write back to mapped column names | 0.2.0 | Transform produces records keyed by literal `x_var`/`y_var`; the point renderer reads via `mapping[x_var]`/`mapping[y_var]` (which point at the user's column names). |
-| PYMYIO-C05 | Make required-mapping check transform-aware | 0.2.0 | Blocks `rangeBar` + `mean_ci` and `area` + band form (`{x_var, low_y, high_y}` without `y_var`). |
+| PYMYIO-C01 | Port `composite_boxplot()` from R-myIO | ✅ Done | Emits IQR rangeBar + whisker points + median + Tukey outliers. |
+| PYMYIO-C02 | Port `composite_violin()` from R-myIO | ✅ Done | Per-group KDE via scipy `gaussian_kde`, drawn as vertical-orientation area + optional box/median/raw layers. |
+| PYMYIO-C03 | Port `composite_ridgeline()` from R-myIO | ✅ Done | Stacked density areas with configurable `overlap`. |
+| PYMYIO-C04 | Fix `qq` so reference line + points + group splits work | ✅ Done | Composite emits `line` (Henry reference through Q1/Q3 quantiles) + `point` per group. Envelope (Beta-distribution CI band on order statistics) deferred. |
+| PYMYIO-C05 | Make required-mapping check transform-aware | Open, target 0.2.0 | Blocks `rangeBar` + `mean_ci` and `area` + band form (`{x_var, low_y, high_y}` without `y_var`). |
+| PYMYIO-C06 | Port `composite_survfit()` and `composite_histogram_fit()` | Open, target 0.2.0 | Both transforms exist (`transform_survfit`, `transform_fit_distribution`) but composite expansion wraps them in a single layer the engine can't fully render. |
 
 ## What works today
 

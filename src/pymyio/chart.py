@@ -9,6 +9,7 @@ Mirrors the JSON config produced by the R package's ``myIO()``,
 from __future__ import annotations
 
 import copy
+import math
 import time
 from typing import Any, Iterable, List, Mapping, Optional, Sequence, Tuple, Union
 
@@ -179,6 +180,342 @@ def _columns(data: DataFrameLike) -> List[str]:
 
 # ---- composite expansion ---------------------------------------------------
 
+def _base_color(color: Any, fallback_index: int = 0) -> str:
+    if isinstance(color, str) and color:
+        return color
+    if isinstance(color, (list, tuple)) and color:
+        return color[0]
+    return OKABE_ITO_PALETTE[fallback_index]
+
+
+def _palette_for_groups(color: Any, n: int) -> List[str]:
+    if isinstance(color, str) and color:
+        base = [color]
+    elif isinstance(color, (list, tuple)) and color:
+        base = list(color)
+    else:
+        base = list(OKABE_ITO_PALETTE)
+    return [base[i % len(base)] for i in range(n)]
+
+
+def _group_y(records: List[dict], x_col: str, y_col: str) -> Tuple[List[Any], dict]:
+    """Stable per-x grouping of float y values; returns (order, {key: [floats]})."""
+    groups: dict = {}
+    order: list = []
+    for row in records:
+        key = row.get(x_col)
+        if key not in groups:
+            groups[key] = []
+            order.append(key)
+        v = row.get(y_col)
+        if v is None or (isinstance(v, float) and math.isnan(v)):
+            continue
+        groups[key].append(float(v))
+    return order, groups
+
+
+def _expand_boxplot(records, mapping, label, color, options):
+    """Port of R/composite_boxplot.R — emits primitive layers the engine knows."""
+    from .transforms import _quantile, transform_outliers
+    show_outliers = options.get("showOutliers", True) is not False
+    whisker_type = options.get("whiskerType", "tukey")
+    base_color = _base_color(color)
+    x_col, y_col = mapping["x_var"], mapping["y_var"]
+
+    order, groups = _group_y(records, x_col, y_col)
+    positions = list(range(1, len(order) + 1))
+    rows = []
+    for pos, key in zip(positions, order):
+        vals = groups[key]
+        if not vals:
+            continue
+        q1 = _quantile(vals, 0.25)
+        med = _quantile(vals, 0.5)
+        q3 = _quantile(vals, 0.75)
+        if whisker_type == "minmax":
+            wlo, whi = min(vals), max(vals)
+        else:
+            iqr = q3 - q1
+            lo_fence, hi_fence = q1 - 1.5 * iqr, q3 + 1.5 * iqr
+            in_lo = [v for v in vals if v >= lo_fence]
+            in_hi = [v for v in vals if v <= hi_fence]
+            wlo = min(in_lo) if in_lo else q1
+            whi = max(in_hi) if in_hi else q3
+        rows.append((pos, q1, q3, med, wlo, whi, str(key)))
+
+    box_data = [{"x_var": p, "low_y": q1, "high_y": q3, "group": g}
+                for (p, q1, q3, _m, _wl, _wh, g) in rows]
+    wlow_data = [{"x_var": p, "y_var": wl, "low_y": wl, "high_y": q1, "group": g}
+                 for (p, q1, _q3, _m, wl, _wh, g) in rows]
+    whigh_data = [{"x_var": p, "y_var": wh, "low_y": q3, "high_y": wh, "group": g}
+                  for (p, _q1, q3, _m, _wl, wh, g) in rows]
+    med_data = [{"x_var": p, "y_var": m, "low_y": m, "high_y": m, "group": g}
+                for (p, _q1, _q3, m, _wl, _wh, g) in rows]
+
+    layers = [
+        {"type": "rangeBar", "label": f"{label} - iqr_box", "data": box_data,
+         "color": base_color, "transform": "identity", "options": {}, "role": "iqr_box",
+         "mapping": {"x_var": "x_var", "low_y": "low_y", "high_y": "high_y", "group": "group"}},
+        {"type": "point", "label": f"{label} - whisker_low", "data": wlow_data,
+         "color": base_color, "transform": "identity", "options": {}, "role": "whisker_low",
+         "mapping": {"x_var": "x_var", "y_var": "y_var", "low_y": "low_y",
+                     "high_y": "high_y", "group": "group"}},
+        {"type": "point", "label": f"{label} - whisker_high", "data": whigh_data,
+         "color": base_color, "transform": "identity", "options": {}, "role": "whisker_high",
+         "mapping": {"x_var": "x_var", "y_var": "y_var", "low_y": "low_y",
+                     "high_y": "high_y", "group": "group"}},
+        {"type": "point", "label": f"{label} - median", "data": med_data,
+         "color": base_color, "transform": "identity", "options": {}, "role": "median",
+         "mapping": {"x_var": "x_var", "y_var": "y_var", "low_y": "low_y",
+                     "high_y": "high_y", "group": "group"}},
+    ]
+
+    if show_outliers:
+        out_records, _ = transform_outliers(records, mapping, options)
+        if out_records:
+            pos_lookup = {str(k): p for p, k in zip(positions, order)}
+            outlier_rows = []
+            for r in out_records:
+                g = str(r.get(x_col))
+                if g not in pos_lookup:
+                    continue
+                v = r.get(y_col)
+                if v is None:
+                    continue
+                outlier_rows.append({"x_var": pos_lookup[g], "y_var": float(v), "group": g})
+            if outlier_rows:
+                layers.append({
+                    "type": "point", "label": f"{label} - outliers",
+                    "data": outlier_rows, "color": base_color,
+                    "transform": "identity", "options": {}, "role": "outliers",
+                    "mapping": {"x_var": "x_var", "y_var": "y_var", "group": "group"},
+                })
+    return layers
+
+
+def _expand_violin(records, mapping, label, color, options):
+    """Port of R/composite_violin.R — area + optional rangeBar/point sub-layers."""
+    from .transforms import _quantile, transform_density
+    show_box = options.get("showBox", True) is not False
+    show_median = options.get("showMedian", True) is not False
+    show_points = bool(options.get("showPoints", False))
+    bandwidth = options.get("bandwidth")
+    box_half_width = float(options.get("boxWidth", 0.7)) / 2
+    x_col, y_col = mapping["x_var"], mapping["y_var"]
+
+    order, groups = _group_y(records, x_col, y_col)
+    positions = list(range(1, len(order) + 1))
+    palette = _palette_for_groups(color, len(order))
+
+    densities = []
+    max_density = 0.0
+    for key in order:
+        vals = groups[key]
+        if not vals:
+            densities.append([])
+            continue
+        sub_records = [{y_col: v} for v in vals]
+        d_records, _ = transform_density(sub_records, {"y_var": y_col},
+                                          {"mirror": False, "bandwidth": bandwidth})
+        if d_records:
+            local_max = max(r["high_y"] for r in d_records)
+            if local_max > max_density:
+                max_density = local_max
+        densities.append(d_records)
+
+    scale = (box_half_width / max_density) if max_density > 0 else 1.0
+
+    layers = []
+    for pos, key, dens, col in zip(positions, order, densities, palette):
+        if not dens:
+            continue
+        gstr = str(key)
+        violin_data = [
+            {"x_var": pos, "y_var": d["x_var"],
+             "low_x": pos - d["high_y"] * scale,
+             "high_x": pos + d["high_y"] * scale,
+             "group": gstr}
+            for d in dens
+        ]
+        layers.append({
+            "type": "area", "label": f"{label} - {gstr} - density",
+            "data": violin_data, "color": col,
+            "transform": "identity", "options": {"orientation": "vertical"},
+            "role": "density_area",
+            "mapping": {"x_var": "x_var", "y_var": "y_var",
+                         "low_x": "low_x", "high_x": "high_x", "group": "group"},
+        })
+
+    box_color = palette[0] if palette else _base_color(color)
+    if show_box:
+        box_data = []
+        for pos, key in zip(positions, order):
+            vals = groups[key]
+            if not vals:
+                continue
+            q1, q3 = _quantile(vals, 0.25), _quantile(vals, 0.75)
+            box_data.append({"x_var": pos, "low_y": q1, "high_y": q3, "group": str(key)})
+        if box_data:
+            layers.append({
+                "type": "rangeBar", "label": f"{label} - iqr_box",
+                "data": box_data, "color": box_color,
+                "transform": "identity", "options": {}, "role": "iqr_box",
+                "mapping": {"x_var": "x_var", "low_y": "low_y",
+                             "high_y": "high_y", "group": "group"},
+            })
+
+    if show_median:
+        med_data = []
+        for pos, key in zip(positions, order):
+            vals = groups[key]
+            if not vals:
+                continue
+            med_data.append({"x_var": pos, "y_var": _quantile(vals, 0.5), "group": str(key)})
+        if med_data:
+            layers.append({
+                "type": "point", "label": f"{label} - median",
+                "data": med_data, "color": box_color,
+                "transform": "identity", "options": {}, "role": "median",
+                "mapping": {"x_var": "x_var", "y_var": "y_var", "group": "group"},
+            })
+
+    if show_points:
+        pt_data = []
+        for pos, key in zip(positions, order):
+            vals = groups[key]
+            if not vals:
+                continue
+            n = len(vals)
+            offsets = [0.0] if n == 1 else [
+                -0.2 + 0.4 * i / (n - 1) for i in range(n)
+            ]
+            for off, v in zip(offsets, vals):
+                pt_data.append({"x_var": pos + off, "y_var": v, "group": str(key)})
+        if pt_data:
+            layers.append({
+                "type": "point", "label": f"{label} - points",
+                "data": pt_data, "color": box_color,
+                "transform": "identity", "options": {}, "role": "points",
+                "mapping": {"x_var": "x_var", "y_var": "y_var", "group": "group"},
+            })
+    return layers
+
+
+def _expand_ridgeline(records, mapping, label, color, options):
+    """Port of R/composite_ridgeline.R — stacked density areas keyed by group."""
+    from .transforms import transform_density
+    overlap = float(options.get("overlap", 0.4))
+    bandwidth = options.get("bandwidth")
+    group_col = mapping["group"]
+    x_col = mapping["x_var"]
+
+    seen, group_order = set(), []
+    for r in records:
+        g = r.get(group_col)
+        if g not in seen:
+            seen.add(g)
+            group_order.append(g)
+    palette = _palette_for_groups(color, len(group_order))
+
+    density_per_group = []
+    max_density = 0.0
+    for g in group_order:
+        sub = [{x_col: r.get(x_col)} for r in records if r.get(group_col) == g
+               and r.get(x_col) is not None]
+        if not sub:
+            density_per_group.append([])
+            continue
+        d_records, _ = transform_density(sub, {"y_var": x_col},
+                                          {"mirror": False, "bandwidth": bandwidth})
+        if d_records:
+            local_max = max(r["high_y"] for r in d_records)
+            if local_max > max_density:
+                max_density = local_max
+        density_per_group.append(d_records)
+
+    if max_density <= 0:
+        return []
+    ridge_height = 1 + overlap
+    scale = ridge_height / max_density
+
+    layers = []
+    for i, (g, dens, col) in enumerate(zip(group_order, density_per_group, palette), start=1):
+        if not dens:
+            continue
+        gstr = str(g)
+        ridge_data = [
+            {"x_var": d["x_var"], "low_y": float(i),
+             "high_y": float(i) + d["high_y"] * scale, "group": gstr}
+            for d in dens
+        ]
+        layers.append({
+            "type": "area", "label": f"{label} - {gstr} - density",
+            "data": ridge_data, "color": col,
+            "transform": "identity", "options": {}, "role": "density_area",
+            "mapping": {"x_var": "x_var", "low_y": "low_y",
+                         "high_y": "high_y", "group": "group"},
+        })
+    return layers
+
+
+def _expand_qq(records, mapping, label, color, options):
+    """Port of R/composite_qq.R — point + reference line (envelope deferred).
+
+    Per-group expansion if mapping['group'] is set; otherwise single Q-Q.
+    """
+    from .transforms import _normal_quantile, _quantile
+
+    base_color = _base_color(color, fallback_index=4)  # blue-ish default like R
+    group_col = mapping.get("group")
+
+    def _qq_for(subset, slabel, scolor):
+        y_col = mapping["y_var"]
+        ys = sorted([float(r[y_col]) for r in subset
+                     if r.get(y_col) is not None
+                     and not (isinstance(r[y_col], float) and math.isnan(r[y_col]))])
+        n = len(ys)
+        if n == 0:
+            return []
+        pts = [{"x_var": _normal_quantile((i + 0.5) / n), "y_var": y}
+               for i, y in enumerate(ys)]
+        # Henry reference line: through (Φ⁻¹(0.25), q1) and (Φ⁻¹(0.75), q3)
+        q1y, q3y = _quantile(ys, 0.25), _quantile(ys, 0.75)
+        x1, x3 = _normal_quantile(0.25), _normal_quantile(0.75)
+        slope = (q3y - q1y) / (x3 - x1) if x3 != x1 else 0.0
+        intercept = q1y - slope * x1
+        x_lo, x_hi = pts[0]["x_var"], pts[-1]["x_var"]
+        line_data = [
+            {"x_var": x_lo, "y_var": intercept + slope * x_lo},
+            {"x_var": x_hi, "y_var": intercept + slope * x_hi},
+        ]
+        return [
+            {"type": "line", "label": f"{slabel} - reference",
+             "data": line_data, "color": scolor,
+             "transform": "identity", "options": {}, "role": "reference",
+             "mapping": {"x_var": "x_var", "y_var": "y_var"}},
+            {"type": "point", "label": f"{slabel} - points",
+             "data": pts, "color": scolor,
+             "transform": "identity", "options": {}, "role": "scatter",
+             "mapping": {"x_var": "x_var", "y_var": "y_var"}},
+        ]
+
+    if group_col and any(r.get(group_col) is not None for r in records):
+        seen, gorder = set(), []
+        for r in records:
+            g = r.get(group_col)
+            if g not in seen:
+                seen.add(g)
+                gorder.append(g)
+        palette = _palette_for_groups(color, len(gorder))
+        layers = []
+        for g, col in zip(gorder, palette):
+            subset = [r for r in records if r.get(group_col) == g]
+            layers.extend(_qq_for(subset, f"{label} \u2014 {g}", col))
+        return layers
+
+    return _qq_for(records, label, base_color)
+
+
 def _expand_composite(type: str, records: List[dict], mapping: Mapping[str, str],
                       label: str, color: Any, options: Mapping[str, Any]) -> List[dict]:
     """Expand a composite layer type into a list of primitive sub-layer specs."""
@@ -192,26 +529,13 @@ def _expand_composite(type: str, records: List[dict], mapping: Mapping[str, str]
              "transform": "lm", "options": options, "role": "fit"},
         ]
     if type == "boxplot":
-        return [
-            {"type": "boxplot", "label": label,
-             "data": records, "mapping": mapping, "color": color,
-             "transform": "quantiles", "options": options, "role": "box"},
-            {"type": "point", "label": f"{label}::outliers",
-             "data": records, "mapping": mapping, "color": color,
-             "transform": "outliers", "options": options, "role": "outliers"},
-        ]
+        return _expand_boxplot(records, mapping, label, color, options)
     if type == "violin":
-        return [
-            {"type": "violin", "label": label,
-             "data": records, "mapping": mapping, "color": color,
-             "transform": "identity", "options": options, "role": "violin"},
-        ]
+        return _expand_violin(records, mapping, label, color, options)
     if type == "ridgeline":
-        return [
-            {"type": "ridgeline", "label": label,
-             "data": records, "mapping": mapping, "color": color,
-             "transform": "identity", "options": options, "role": "ridgeline"},
-        ]
+        return _expand_ridgeline(records, mapping, label, color, options)
+    if type == "qq":
+        return _expand_qq(records, mapping, label, color, options)
     if type == "comparison":
         return [
             {"type": "point", "label": f"{label}::points",
@@ -220,12 +544,6 @@ def _expand_composite(type: str, records: List[dict], mapping: Mapping[str, str]
             {"type": "bracket", "label": f"{label}::brackets",
              "data": records, "mapping": mapping, "color": color,
              "transform": "pairwise_test", "options": options, "role": "test"},
-        ]
-    if type == "qq":
-        return [
-            {"type": "point", "label": label,
-             "data": records, "mapping": mapping, "color": color,
-             "transform": "qq", "options": options, "role": "qq"},
         ]
     if type == "survfit":
         return [

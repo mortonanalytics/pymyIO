@@ -252,6 +252,17 @@ app_ui = ui.page_navbar(
         ),
         ui.nav_panel("Hexbin Density",
             ui.div({"class": "chart-container"}, output_myio("hexbin_plot"))),
+        ui.nav_panel("Q-Q Plot",
+            ui.layout_sidebar(
+                ui.sidebar(
+                    ui.input_select("qq_var", "Variable",
+                        choices=["Sepal.Length", "Sepal.Width",
+                                  "Petal.Length", "Petal.Width"]),
+                    ui.input_checkbox("qq_grouped", "Group by Species", value=False),
+                ),
+                output_myio("qq_plot"),
+            ),
+        ),
     ),
     ui.nav_menu(
         "Specialized",
@@ -275,6 +286,12 @@ app_ui = ui.page_navbar(
         "Financial",
         ui.nav_panel("Candlestick", ui.div({"class": "chart-container"}, output_myio("candlestick_plot"))),
         ui.nav_panel("Waterfall", ui.div({"class": "chart-container"}, output_myio("waterfall_plot"))),
+    ),
+    ui.nav_menu(
+        "Distribution",
+        ui.nav_panel("Boxplot", ui.div({"class": "chart-container"}, output_myio("boxplot_plot"))),
+        ui.nav_panel("Violin", ui.div({"class": "chart-container"}, output_myio("violin_plot"))),
+        ui.nav_panel("Ridgeline", ui.div({"class": "chart-container"}, output_myio("ridgeline_plot"))),
     ),
     ui.nav_menu(
         "Relational",
@@ -383,46 +400,28 @@ app_ui = ui.page_navbar(
         ui.div(
             {"class": "container", "style": "max-width: 800px; padding-top: 2rem;"},
             ui.h2("Charts not yet rendering on 0.1.x"),
-            ui.p("Two categories: (a) statistical transforms not yet ported, "
-                 "(b) composite chart types whose Python expansion sends a layer "
-                 "type the d3 engine has no renderer for. Both unblock once "
-                 "pymyio's composite-expansion + transform layer reaches R parity."),
-            ui.h3("Composite expansions (engine has no renderer for these layer types)"),
+            ui.p("Statistical transforms and composite expansions still pending. "
+                 "All other tabs render against the live d3 engine."),
             ui.div({"class": "deferred-card"},
-                ui.tags.b("Boxplot, Violin, Ridgeline"),
-                ui.tags.span(" — pymyio composite-expansion bug"),
-                ui.p("R-myIO expands these into primitive bar/line/point layers "
-                     "via composite_boxplot()/composite_violin()/composite_ridgeline() "
-                     "before sending to the engine. pymyio's _expand_composite() "
-                     "still emits a layer with type='boxplot'/'violin'/'ridgeline', "
-                     "and the engine throws \"Unknown renderer type.\" Fix is to "
-                     "port the R composite_*() functions to Python.")),
+                ui.tags.b("Survival (Kaplan-Meier) — survfit"),
+                ui.tags.span(" — PYMYIO-T03, target 0.3.0"),
+                ui.p("Composite expansion still emits transform=survfit which "
+                     "renders the line layer but expects per-row Greenwood SE "
+                     "fields the engine doesn't synthesize.")),
             ui.div({"class": "deferred-card"},
-                ui.tags.b("Q-Q Plot"),
-                ui.tags.span(" — pymyio transform/mapping mismatch"),
-                ui.p("The qq transform produces records with literal x_var/y_var "
-                     "keys, but the layer's mapping doesn't reference them, so "
-                     "the point renderer can't find the columns. Same root cause "
-                     "as the rangeBar mean_ci bug.")),
-            ui.h3("Deferred statistical transforms"),
-            ui.div({"class": "deferred-card"},
-                ui.tags.b("LOESS / smooth / density"),
-                ui.tags.span(" — PYMYIO-T01, T02, target 0.2.0"),
-                ui.p("Local-polynomial smoother + KDE. Unblocks LOESS overlays, "
-                     "moving-average lines, and density-based ridgelines.")),
-            ui.div({"class": "deferred-card"},
-                ui.tags.b("Survival (Kaplan-Meier)"),
-                ui.tags.span(" — PYMYIO-T03, target 0.3.0")),
-            ui.div({"class": "deferred-card"},
-                ui.tags.b("Distribution fit"),
+                ui.tags.b("Distribution fit — histogram_fit"),
                 ui.tags.span(" — PYMYIO-T04, target 0.3.0"),
-                ui.p("MLE for normal / log-normal / exponential.")),
+                ui.p("Composite still emits transform=fit_distribution on the "
+                     "line layer; needs the equivalent of R's composite_histogram_fit "
+                     "to bin + scale.")),
             ui.div({"class": "deferred-card"},
                 ui.tags.b("Pairwise tests (comparison brackets)"),
-                ui.tags.span(" — PYMYIO-T05, target 0.3.0")),
+                ui.tags.span(" — PYMYIO-T05, target 0.3.0"),
+                ui.p("Bracket renderer needs the pairwise_test transform output "
+                     "in a specific shape; composite expansion not yet ported.")),
             ui.div({"class": "deferred-card"},
                 ui.tags.b("Mean ± CI on rangeBar"),
-                ui.tags.span(" — pymyio required-mapping bug"),
+                ui.tags.span(" — pymyio required-mapping bug (PYMYIO-C05)"),
                 ui.p("rangeBar requires low_y/high_y at validation time, but the "
                      "R-parity {x_var, y_var} call relies on the mean_ci transform "
                      "to synthesize the band. Required-mapping check needs to be "
@@ -606,6 +605,19 @@ def server(input, output, session):
             .render()
         )
 
+    @render_myio
+    def qq_plot():
+        mapping = {"y_var": input.qq_var()}
+        if input.qq_grouped():
+            mapping["group"] = "Species"
+        return (
+            MyIO(data=iris)
+            .add_layer(type="qq", color=OKABE_ITO[:3], label="Q-Q",
+                       mapping=mapping, options={"envelope": False})
+            .set_axis_format(x_label="Theoretical Quantiles", y_label="Sample Quantiles")
+            .render()
+        )
+
     # -- Specialized --
     @render_myio
     def donut_plot():
@@ -688,6 +700,44 @@ def server(input, output, session):
                                           "total": "total"})
             .define_categorical_axis(x_axis=True)
             .set_axis_format(y_format="$,.0f", x_label="Step", y_label="Running Total")
+            .render()
+        )
+
+    # -- Distribution --
+    @render_myio
+    def boxplot_plot():
+        return (
+            MyIO()
+            .add_layer(type="boxplot", color="#4E79A7", label="Sepal Length",
+                       data=iris, mapping={"x_var": "Species", "y_var": "Sepal.Length"},
+                       options={"showOutliers": True})
+            .define_categorical_axis(x_axis=True)
+            .set_axis_format(x_label="Species", y_label="Sepal Length")
+            .render()
+        )
+
+    @render_myio
+    def violin_plot():
+        return (
+            MyIO()
+            .add_layer(type="violin", color=OKABE_ITO[:3], label="Sepal Length",
+                       data=iris, mapping={"x_var": "Species", "y_var": "Sepal.Length"},
+                       options={"showBox": True, "showMedian": True, "showPoints": False})
+            .set_axis_format(x_label="Species (1=setosa, 2=versicolor, 3=virginica)",
+                             y_label="Sepal Length")
+            .render()
+        )
+
+    @render_myio
+    def ridgeline_plot():
+        df = mtcars.copy()
+        df["cyl"] = df["cyl"].astype(str)
+        return (
+            MyIO()
+            .add_layer(type="ridgeline", color=OKABE_ITO[:3], label="MPG by Cylinders",
+                       data=df, mapping={"x_var": "mpg", "y_var": "mpg", "group": "cyl"},
+                       options={"overlap": 0.4})
+            .set_axis_format(x_label="MPG", y_label="Cylinders")
             .render()
         )
 

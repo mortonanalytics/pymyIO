@@ -16,9 +16,12 @@ drift.
     panel, and all 26 primitive renderers (bar/line/area/point/histogram/
     hexbin/treemap/donut/gauge/heatmap/calendarHeatmap/candlestick/waterfall/
     sankey/rangeBar/lollipop/dumbbell/waffle/beeswarm/bump/radar/funnel/
-    parallel/text/bracket) match the R Shiny demo. **Currently not rendering
-    in 0.1.x:** `boxplot`, `violin`, `ridgeline`, `qq`, `comparison`,
-    `survfit`, `histogram_fit` — see [Roadmap](roadmap.md).
+    parallel/text/bracket) match the R Shiny demo. Composite types
+    `boxplot`, `violin`, `ridgeline`, `qq`, and `regression` are also
+    rendering (Python-side ports of R's `composite_*()` functions land
+    each as multiple primitive layers). **Currently not rendering in
+    0.1.x:** `comparison`, `survfit`, `histogram_fit` — see
+    [Roadmap](roadmap.md).
 
 ## Get started
 
