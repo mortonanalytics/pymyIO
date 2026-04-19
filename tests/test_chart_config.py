@@ -44,8 +44,9 @@ def test_add_layer_appends_with_expected_fields():
     assert layer["sourceKey"] == "_source_key"
     assert layer["visibility"] is True
     assert layer["mapping"] == {"x_var": "wt", "y_var": "mpg"}
-    assert layer["data"][0]["_source_key"] == 1
+    assert layer["data"][0]["_source_key"] == "row_1"
     assert layer["data"][0]["wt"] == 2.620
+    assert layer["id"] == "layer_001"
 
 
 def test_unknown_type_raises():

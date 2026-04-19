@@ -39,9 +39,40 @@ Source = "https://github.com/mortonanalytics/pymyIO"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/pymyio"]
+# Skip the symlinks under static/ — force-include below materializes them
+# from the submodule so the wheel contains a single, canonical copy.
+exclude = [
+  "src/pymyio/static/myIOapi.js",
+  "src/pymyio/static/style.css",
+  "src/pymyio/static/lib/d3.min.js",
+  "src/pymyio/static/lib/d3-hexbin.js",
+  "src/pymyio/static/lib/d3-sankey.min.js",
+]
 
-[tool.hatch.build.targets.wheel.shared-data]
-"src/pymyio/static" = "share/pymyio/static"
+# Materialize the engine into the wheel by following the symlinks under
+# src/pymyio/static/ that point into the vendored myIO submodule. This way
+# end-users who `pip install pymyio` get real files even though developers
+# work from a single source of truth in vendor/myIO/.
+[tool.hatch.build.targets.wheel.force-include]
+"vendor/myIO/inst/htmlwidgets/myIO/myIOapi.js"     = "pymyio/static/myIOapi.js"
+"vendor/myIO/inst/htmlwidgets/myIO/style.css"      = "pymyio/static/style.css"
+"vendor/myIO/inst/htmlwidgets/lib/d3.min.js"       = "pymyio/static/lib/d3.min.js"
+"vendor/myIO/inst/htmlwidgets/lib/d3-hexbin.js"    = "pymyio/static/lib/d3-hexbin.js"
+"vendor/myIO/inst/htmlwidgets/lib/d3-sankey.min.js" = "pymyio/static/lib/d3-sankey.min.js"
+
+# Sdist must include the submodule contents so wheels can be built from the
+# tarball alone (PyPI doesn't fetch git submodules).
+[tool.hatch.build.targets.sdist]
+include = [
+  "src/pymyio",
+  "vendor/myIO/inst/htmlwidgets",
+  "vendor/myIO/LICENSE",
+  "tests",
+  "examples",
+  "README.md",
+  "LICENSE",
+  "pyproject.toml",
+]
 
 [tool.ruff]
 line-length = 100
