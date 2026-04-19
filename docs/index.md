@@ -32,7 +32,7 @@ drift.
 ## Try the live demo
 
 A Shiny-for-Python gallery showcasing every working chart type is deployed at
-[https://pymyio-gallery.morton-analytics.com/](https://pymyio-gallery.morton-analytics.com/)
+[https://pymyio-gallery-kgbq5.ondigitalocean.app/](https://pymyio-gallery-kgbq5.ondigitalocean.app/)
 (alongside the R-myIO gallery at
 [https://www.morton-analytics.com/myio/](https://www.morton-analytics.com/myio/)).
 Source lives in [`app/app.py`](https://github.com/mortonanalytics/pymyIO/blob/main/app/app.py).
