@@ -11,7 +11,7 @@ submodule so there is one canonical source of truth — no duplicated JS to
 drift.
 
 - **Docs:** [https://mortonanalytics.github.io/pymyIO/](https://mortonanalytics.github.io/pymyIO/)
-- **Live gallery:** [https://pymyio-gallery-kgbq5.ondigitalocean.app/](https://pymyio-gallery-kgbq5.ondigitalocean.app/) (Shiny for Python, source in [`app/app.py`](app/app.py))
+- **Live gallery:** [https://pymyio.morton-analytics.com/](https://pymyio.morton-analytics.com/) (Shiny for Python, source in [`app/app.py`](app/app.py))
 
 > Status: alpha (0.1.0). API is settled and matches R's `setMargin`/`setBrush`/
 > etc. surface; six of nineteen R-side numeric transforms (`loess`, `smooth`,

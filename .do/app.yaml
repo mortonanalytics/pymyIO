@@ -25,3 +25,8 @@ services:
       failure_threshold: 3
     routes:
       - path: /
+
+domains:
+  - domain: pymyio.morton-analytics.com
+    type: PRIMARY
+    zone: morton-analytics.com
