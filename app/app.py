@@ -10,12 +10,31 @@ from __future__ import annotations
 import math
 import random
 from datetime import date, timedelta
+from pathlib import Path
 
 import pandas as pd
+import pymyio
 from shiny import App, reactive, render, ui
 
 from pymyio import MyIO, link_charts
 from pymyio.shiny import output_myio, reactive_brush, render_myio
+
+# shinywidgets serves the anywidget _esm as an inline blob, so widget.js's
+# `import.meta.url` is a `blob:` URL — `new URL(".", import.meta.url)` then
+# throws "Invalid URL" and no engine assets load. Mount pymyio's static dir
+# as a Shiny route and pin every widget's `_base_url` to that route so the
+# in-engine asset loader (line 60 of widget.js) takes the override path.
+PYMYIO_STATIC_DIR = Path(pymyio.__file__).parent / "static"
+PYMYIO_STATIC_URL = "/pymyio-static/"
+
+_orig_render = MyIO.render
+
+def _render_with_assets(self):
+    widget = _orig_render(self)
+    widget._base_url = PYMYIO_STATIC_URL
+    return widget
+
+MyIO.render = _render_with_assets
 
 # ---- shared datasets -------------------------------------------------------
 
@@ -1071,4 +1090,4 @@ def server(input, output, session):
         )
 
 
-app = App(app_ui, server)
+app = App(app_ui, server, static_assets={PYMYIO_STATIC_URL: PYMYIO_STATIC_DIR})
