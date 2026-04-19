@@ -146,13 +146,6 @@ def test_ci_band_widens_with_variance():
     assert span_wide > span_tight
 
 
-@pytest.mark.parametrize("name", ["loess", "smooth", "density", "survfit",
-                                   "fit_distribution", "pairwise_test"])
-def test_unimplemented_transforms_raise_with_roadmap_pointer(name):
-    with pytest.raises(NotImplementedError, match="PYMYIO-T"):
-        get_transform(name)([], {"x_var": "x", "y_var": "y"}, None)
-
-
 # ---- composites ---------------------------------------------------------
 
 def test_regression_composite_expands_into_point_plus_lm_line():

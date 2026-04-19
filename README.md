@@ -14,10 +14,10 @@ drift.
 - **Live gallery:** [https://pymyio.morton-analytics.com/](https://pymyio.morton-analytics.com/) (Shiny for Python, source in [`app/app.py`](app/app.py))
 
 > Status: alpha (0.1.0). API is settled and matches R's `setMargin`/`setBrush`/
-> etc. surface; six of nineteen R-side numeric transforms (`loess`, `smooth`,
-> `density`, `survfit`, `fit_distribution`, `pairwise_test`) currently raise
-> `NotImplementedError` with a roadmap pointer (PYMYIO-T01..T05) — they will
-> land before 1.0.
+> etc. surface. All 19 registry transforms are implemented, including
+> `loess`, `smooth`, `density`, `survfit`, `fit_distribution`, and
+> `pairwise_test` (scipy-backed, Python-native — numeric output may differ
+> from the R package's `stats`-based versions).
 
 ## Installation
 
@@ -201,11 +201,6 @@ git add vendor/myIO && git commit -m "bump myIO engine to <sha>"
 
 | ID | Item | Disposition |
 |----|------|-------------|
-| PYMYIO-T01 | `loess` / `smooth` transforms | Deferred — needs local-polynomial smoother. Targets 0.2.0 |
-| PYMYIO-T02 | `density` transform | Deferred — needs KDE. Targets 0.2.0 |
-| PYMYIO-T03 | `survfit` transform | Deferred — needs Kaplan-Meier. Targets 0.3.0 |
-| PYMYIO-T04 | `fit_distribution` transform | Deferred — needs MLE for normal/gamma/etc. Targets 0.3.0 |
-| PYMYIO-T05 | `pairwise_test` transform | Deferred — needs t/Wilcoxon. Targets 0.3.0 |
 | PYMYIO-DOC | Sphinx docs site | Out of scope for 0.1.0 |
 
 ## License
