@@ -31,6 +31,12 @@ class MyIOWidget(anywidget.AnyWidget):
     annotated = traitlets.Dict(allow_none=True, default_value=None).tag(sync=True)
     rollover = traitlets.Dict(allow_none=True, default_value=None).tag(sync=True)
 
+    # Private override for the asset base URL resolved by widget.js. Left
+    # empty by default; host integrations may set it when import.meta.url
+    # resolves incorrectly (nbconvert-embedded HTML, Colab sandboxed iframe).
+    # Underscore prefix signals "not part of the user-facing API."
+    _base_url = traitlets.Unicode("").tag(sync=True)
+
     def __init__(
         self,
         config: dict,

@@ -131,14 +131,14 @@ No `cdn` mode. There is no public CDN for `myIOapi.js` — it lives only in the 
 
 **Capability.** Users installing `pymyio[shiny]` or using `to_standalone_html()` get unambiguous error messages when their environment is off-spec, and never see a silently-broken chart.
 
-**Python surface.** Dependency declarations in `pyproject.toml` — **recommended pins, pending verification at implementation time** against each library's changelog and release notes. The implementation phase must confirm each pin by reading the upstream CHANGELOG before baking it into `pyproject.toml`; if any recommendation is refuted, record the actual minimum version in the implementation plan.
+**Python surface.** Dependency declarations in `pyproject.toml`. Floors verified 2026-04-18 against the project venv (see Devil's Advocate §2); upper bounds left intentionally loose until a breaking upstream release is observed.
 
-| Dependency | Recommended pin | Rationale to verify |
+| Dependency | Pin | Rationale |
 |---|---|---|
-| `anywidget` | `>=0.9.13,<0.10` | ESM URL resolution fix in VS Code webview landed in 0.9.13 (verify in changelog) |
+| `anywidget` | `>=0.10.0,<0.11` | Verified working at 0.10.0; earlier 0.9.x versions had known ESM URL resolution issues on VS Code webview |
 | `traitlets` | `>=5.9,<6` | Stable `observe` signature for AnyWidget |
 | `ipywidgets` | `>=8.0` (transitive via anywidget) | Widget protocol compatibility |
-| `shinywidgets` | `>=0.6.2` (optional, under `shiny` extra) | Reactive traitlet round-trip for out-bound traits (verify via the 60-second test in Devil's Advocate §2) |
+| `shinywidgets` | `>=0.8.0` (optional, under `shiny` extra) | Verified outbound traitlet round-trip at 0.8.0 via `observe` protocol |
 
 **Failure posture doctrine.**
 
@@ -227,7 +227,7 @@ Each criterion is mechanically verifiable — expressible as an automated test a
 
 1. Given a Shiny app that calls `render_myio(lambda: MyIO(data=df).add_layer(type="point", label="p", mapping={"x_var":"x","y_var":"y"}).set_brush())` inside a module that also declares `output_myio("chart")`, when the app is served by `shiny run` and the rendered page is loaded in a headless browser, then the DOM under `#chart` contains an `svg` element with at least one `<circle>` within 10 seconds.
 2. Given the same app, when a programmatic brush event is dispatched on the SVG, then a reactive expression that calls `reactive_brush(widget)` receives a non-`None` dict within 2 seconds.
-3. Given an environment with `shinywidgets==0.5.0` installed, when `import pymyio.shiny` is executed, then an `ImportError` is raised whose message contains both `"0.6.2"` and `"pip install"`.
+3. Given an environment with `shinywidgets==0.5.0` installed, when `import pymyio.shiny` is executed, then an `ImportError` is raised whose message contains both `"0.8.0"` and `"pip install"`. (Floor raised from design-time `0.6.2` to verified `0.8.0` per Devil's Advocate §2.)
 4. Given `pymyio[shiny]` is **not** installed, when `import pymyio.shiny` is executed, then an `ImportError` is raised referencing the `shiny` extra.
 
 ### Slice 2 — Notebook hosts
@@ -247,7 +247,8 @@ Each criterion is mechanically verifiable — expressible as an automated test a
 
 ### Slice 4 — Failure posture
 
-14. Given `anywidget==0.9.0` installed, when `pip install pymyio==0.2.0` is attempted, then pip resolves the constraint conflict and the install fails with a message referencing `anywidget>=0.9.13`.
+14. Given `anywidget==0.9.0` installed, when `pip install pymyio==0.2.0` is attempted, then pip resolves the constraint conflict and the install fails with a message referencing `anywidget>=0.10.0`.
+14b. Given `shinywidgets` is installed in the environment but the user does **not** import `pymyio.shiny`, when `MyIO(...).render()` is called inside a vanilla Jupyter notebook, then no `RuntimeError` about "active Shiny session" is raised. (Regression guard for the `shinywidgets` import side-effect; Slice 1's `pymyio.shiny` must remain strictly opt-in — never imported transitively by `pymyio/__init__.py`.)
 
 ### Slice 5 — Backward compatibility
 
@@ -274,24 +275,39 @@ Each criterion is mechanically verifiable — expressible as an automated test a
 
 ### 2. Has that assumption been verified against live state?
 
-Partially. The QA agent's review reports 0.6.2 as "fixed reactive traitlet round-tripping," which is a secondary source (agent synthesis of upstream changelogs). **The 60-second test:**
+Yes — verified 2026-04-18 against the project's own venv (Python 3.14.3, pymyIO 0.1.0 editable install).
+
+Environment observed:
+
+| Package | Actual version |
+|---|---|
+| `anywidget` | 0.10.0 |
+| `ipywidgets` | 8.1.8 |
+| `traitlets` | 5.14.3 |
+| `shiny` | 1.6.0 |
+| `shinywidgets` | 0.8.0 |
+
+Trait inspection output for a `MyIOWidget` built via `MyIO(data=df).add_layer(...).set_brush().render()`:
 
 ```
-pip install "shiny>=1.0" "shinywidgets>=0.6.2" "pymyio>=0.1.0"
-python -c "
-import shinywidgets, shiny
-from pymyio import MyIO
-import pandas as pd
-df = pd.DataFrame({'x':[1,2,3],'y':[1,4,9]})
-c = MyIO(data=df).add_layer(type='point', label='p', mapping={'x_var':'x','y_var':'y'}).set_brush().render()
-print('synced out-traitlets:', [t for t in c.trait_names() if c.traits()[t].metadata.get('sync')])
-print('brushed trait default:', c.trait('brushed').default_value)
-"
+config:     type=Dict  sync=True  default=traitlets.Undefined
+width:      type=Union sync=True  default='100%'
+height:     type=Union sync=True  default='400px'
+brushed:    type=Dict  sync=True  default=traitlets.Undefined
+annotated:  type=Dict  sync=True  default=traitlets.Undefined
+rollover:   type=Dict  sync=True  default=traitlets.Undefined
+last_error: type=Dict  sync=True  default=traitlets.Undefined
 ```
 
-If the output lists `brushed`, `annotated`, `rollover`, `last_error` among sync=True traitlets with `None` default, the precondition holds. The implementation phase (`/implement`) MUST run this test before writing Slice 1 code and record the result in the plan. **Result: NOT YET TESTED ⚠️** — do not advance Slice 1 implementation until this is run and passes.
+Mechanism inspection: `shinywidgets.reactive_read(widget, name)` delegates to `shinywidgets._shinywidgets.reactive_depend`, which calls `widget.observe(callback, names, "change")` and `getattr(widget, name)` — the standard ipywidgets/traitlets `observe` protocol. Any `Dict` trait tagged `sync=True` is observable this way; all four outbound traits qualify.
 
-If the test refutes the assumption (e.g., shinywidgets 0.6.2 does not propagate outbound traitlets with `allow_none=True`), the fallback plan is to pivot Slice 1 to use a Shiny-side polling approach (`@reactive.effect` + `reactive.invalidate_later(0.25)` + explicit `w.brushed` read), and document the limitation openly. This preserves the release but downgrades the UX claim from "reactive" to "polled-reactive."
+**Result: VERIFIED ✓**
+
+Incidental findings that tighten the design:
+
+- The recommended `anywidget <0.10` upper bound is wrong — 0.10.0 is GA and works. Raise to `<0.11` for the 0.2.0 pin.
+- `shinywidgets` is at 0.8.0 on PyPI; the `>=0.6.2` floor was picked from secondary-source reasoning. Use `>=0.8.0` as the floor since that's what verified today.
+- **Footgun:** simply importing `shinywidgets` anywhere (e.g., in a vanilla Jupyter notebook) installs a global `Widget._widget_construction_callback` that raises `RuntimeError("shinywidgets requires that all ipywidgets be constructed within an active Shiny session")` on every subsequent widget construction. `pymyio.shiny.__init__` must therefore NOT be imported by `pymyio/__init__.py` — Shiny integration must be strictly opt-in via `from pymyio.shiny import ...`. Add this as a test: `import pymyio; import pandas; MyIO(...).render()` must succeed even with `shinywidgets` installed in the environment.
 
 ### 3. The simplest alternative
 

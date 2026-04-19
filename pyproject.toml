@@ -19,16 +19,21 @@ classifiers = [
   "Programming Language :: Python :: 3 :: Only",
 ]
 dependencies = [
-  "anywidget>=0.9",
-  "traitlets>=5.9",
+  "anywidget>=0.10.0,<0.11",
+  "traitlets>=5.9,<6",
+  "ipywidgets>=8.0",
 ]
 
 [project.optional-dependencies]
+shiny = ["shinywidgets>=0.8.0", "shiny>=1.0"]
 pandas = ["pandas>=1.5"]
 polars = ["polars>=0.20"]
 dev = [
   "pytest>=7",
+  "pytest-playwright>=0.5",
   "pandas>=1.5",
+  "shinywidgets>=0.8.0",
+  "shiny>=1.0",
   "ruff>=0.4",
 ]
 

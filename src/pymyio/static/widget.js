@@ -4,7 +4,7 @@
 
 let enginePromise = null;
 
-function injectScript(url) {
+function injectScript(url, role) {
   return new Promise((resolve, reject) => {
     const existing = document.querySelector(`script[data-pymyio="${url}"]`);
     if (existing) {
@@ -17,6 +17,7 @@ function injectScript(url) {
     tag.src = url;
     tag.async = false;
     tag.dataset.pymyio = url;
+    tag.dataset.pymyioRole = role;
     tag.addEventListener("load", () => { tag.dataset.loaded = "true"; resolve(); });
     tag.addEventListener("error", () => reject(new Error(`Failed to load ${url}`)));
     document.head.appendChild(tag);
@@ -24,12 +25,17 @@ function injectScript(url) {
 }
 
 async function loadEngine(baseUrl) {
+  if (typeof window.myIOchart === "function") {
+    window.__pymyioEngineVersion ||= "unknown";
+    return Promise.resolve();
+  }
   if (enginePromise) return enginePromise;
   enginePromise = (async () => {
-    await injectScript(`${baseUrl}lib/d3.min.js`);
-    await injectScript(`${baseUrl}lib/d3-hexbin.js`);
-    await injectScript(`${baseUrl}lib/d3-sankey.min.js`);
-    await injectScript(`${baseUrl}myIOapi.js`);
+    await injectScript(`${baseUrl}lib/d3.min.js`, "d3-core");
+    await injectScript(`${baseUrl}lib/d3-hexbin.js`, "d3-hexbin");
+    await injectScript(`${baseUrl}lib/d3-sankey.min.js`, "d3-sankey");
+    await injectScript(`${baseUrl}myIOapi.js`, "engine");
+    window.__pymyioEngineVersion = (window.myIOchart?.version) || "unknown";
   })();
   return enginePromise;
 }
@@ -45,11 +51,15 @@ function render({ model, el }) {
   applySize(container, model.get("width"), model.get("height"));
   el.appendChild(container);
 
-  // The vendored myIOapi.js script lives next to this widget.js, so derive
-  // the base URL from import.meta.url when available, else fall back to "./".
-  const baseUrl = (typeof import.meta !== "undefined" && import.meta.url)
-    ? new URL(".", import.meta.url).href
-    : "./";
+  // Three-tier base-URL resolution. The _base_url traitlet overrides when
+  // import.meta.url resolves incorrectly (nbconvert, Colab sandboxed iframe).
+  // Otherwise derive from import.meta.url, with "./" as a last resort.
+  const override = model.get("_base_url");
+  const baseUrl = (typeof override === "string" && override.length > 0)
+    ? (override.endsWith("/") ? override : override + "/")
+    : ((typeof import.meta !== "undefined" && import.meta.url)
+        ? new URL(".", import.meta.url).href
+        : "./");
 
   let chart = null;
 

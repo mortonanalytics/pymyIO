@@ -62,6 +62,63 @@ In a Jupyter cell, the trailing expression renders as an interactive widget.
 Outside notebooks, call `.render()` to get a `MyIOWidget`, or `.to_config()`
 for the underlying JSON spec.
 
+## Where pymyIO runs
+
+| Host | Tier | Render idiom |
+|---|---|---|
+| [JupyterLab](docs/hosts/jupyterlab.md) | 1 | trailing expression in a cell |
+| [VS Code (Jupyter extension)](docs/hosts/vscode.md) | 1 | trailing expression in a cell |
+| [Shiny for Python](docs/hosts/shiny.md) | 1 | `from pymyio.shiny import render_myio, output_myio` |
+| [Classic Notebook 7.x](docs/hosts/classic-notebook.md) | 2 | trailing expression |
+| [Google Colab](docs/hosts/colab.md) | 2 | trailing expression |
+| [marimo](docs/hosts/marimo.md) | 2 | `mo.ui.anywidget(MyIO(...).render())` |
+| [Panel](docs/hosts/panel.md) | 2 | `pn.pane.IPyWidget(MyIO(...).render())` |
+| [Solara](docs/hosts/solara.md) | 2 | `solara.display(MyIO(...).render())` |
+| [Quarto (HTML)](docs/hosts/quarto.md) | 2 | interactive HTML only; PDF/docx not supported |
+| static HTML / email / Quarto PDF workaround | — | `pymyio.to_standalone_html(chart)` |
+
+**Tier 1** hosts are covered by CI and release-block on regressions.
+**Tier 2** hosts are documented best-effort and verified on the
+[pre-release smoke checklist](docs/hosts/_release-checklist.md).
+
+## Shiny for Python
+
+```python
+from shiny import App, ui
+from pymyio.shiny import render_myio, output_myio, reactive_brush, example_app
+
+# Copy-paste the whole app:
+app = example_app()
+```
+
+The `pymyio.shiny` submodule ships thin aliases over
+[`shinywidgets`](https://github.com/posit-dev/py-shinywidgets) so R-myIO
+users get `renderMyIO`/`myIOOutput` muscle memory, plus
+`reactive_brush`/`reactive_annotated`/`reactive_rollover` helpers that wrap
+`shinywidgets.reactive_read(widget, trait_name)`.
+
+Install with `pip install 'pymyio[shiny]'` (pulls `shinywidgets >= 0.8.0`
+and `shiny >= 1.0`). Don't import `shinywidgets` directly in vanilla
+Jupyter notebooks — it installs a process-wide callback that breaks widget
+construction outside a Shiny session. pymyio's top-level never touches
+`shinywidgets`; the submodule is opt-in for exactly this reason.
+
+## Static HTML export (Quarto, nbconvert, email embeds)
+
+```python
+from pymyio import to_standalone_html
+
+html = to_standalone_html(MyIO(data=df).add_layer(...))
+open("chart.html", "w").write(html)
+```
+
+`include_assets="inline"` (default) produces one self-contained HTML
+string; `include_assets="bundled"` returns `(html_str, assets_dict)` for
+publishing pipelines that prefer sidecar assets. Interactive-only features
+(`set_brush`, `set_annotation`, `drag_points`) emit a
+`MyIOStaticWarning` — the chart renders, but round-trip callbacks need a
+live Python kernel.
+
 ## Supported chart types (34 total)
 
 `line`, `point`, `bar`, `groupedBar`, `area`, `histogram`, `heatmap`,
