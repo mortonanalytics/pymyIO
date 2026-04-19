@@ -1,0 +1,88 @@
+name: engine-bump-close
+
+# When vendor/myIO is advanced on main, close any open
+# `engine-bump-pending` issues whose upstream SHA is now an ancestor of
+# the new submodule HEAD. See AGENTS.md for context.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'vendor/myIO'
+      - '.gitmodules'
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  close-resolved-issues:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout with submodule
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+          fetch-depth: 1
+
+      - name: Fetch submodule history
+        working-directory: vendor/myIO
+        run: |
+          git fetch --no-tags --prune origin '+refs/heads/*:refs/remotes/origin/*' || true
+
+      - name: Resolve current submodule HEAD
+        id: sub
+        working-directory: vendor/myIO
+        run: |
+          SHA="$(git rev-parse HEAD)"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "Submodule HEAD is $SHA"
+
+      - name: Close resolved tracking issues
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SUBMODULE_SHA: ${{ steps.sub.outputs.sha }}
+        working-directory: vendor/myIO
+        run: |
+          # List open tracking issues with their bodies so we can extract
+          # the upstream SHA each one refers to.
+          issues_json="$(gh issue list \
+            --repo "${{ github.repository }}" \
+            --label engine-bump-pending \
+            --state open \
+            --limit 200 \
+            --json number,title,body)"
+
+          echo "$issues_json" | jq -c '.[]' | while read -r row; do
+            num="$(echo "$row"  | jq -r '.number')"
+            title="$(echo "$row" | jq -r '.title')"
+            body="$(echo "$row"  | jq -r '.body')"
+
+            # Pull a 40-char SHA out of the body; the issue template puts
+            # it in a markdown link to /commit/<sha>.
+            upstream_sha="$(printf '%s' "$body" \
+              | grep -oE '/commit/[0-9a-f]{40}' \
+              | head -n1 \
+              | sed 's|/commit/||')"
+
+            if [ -z "$upstream_sha" ]; then
+              echo "issue #$num: no upstream SHA found in body; skipping"
+              continue
+            fi
+
+            # Is the upstream SHA an ancestor of the current submodule HEAD?
+            if ! git cat-file -e "$upstream_sha^{commit}" 2>/dev/null; then
+              echo "issue #$num: upstream $upstream_sha not fetched locally; skipping"
+              continue
+            fi
+
+            if git merge-base --is-ancestor "$upstream_sha" "$SUBMODULE_SHA"; then
+              echo "issue #$num: $upstream_sha is in submodule HEAD — closing"
+              gh issue close "$num" \
+                --repo "${{ github.repository }}" \
+                --reason completed \
+                --comment "Resolved by submodule bump to \`$SUBMODULE_SHA\` (contains \`$upstream_sha\`). Auto-closed by \`engine-bump-close.yaml\`."
+            else
+              echo "issue #$num: $upstream_sha is NOT yet in submodule HEAD ($SUBMODULE_SHA) — leaving open"
+            fi
+          done
