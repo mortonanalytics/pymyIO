@@ -1,0 +1,27 @@
+name: pymyio-gallery
+
+# Single-service Dockerfile build. Update `repo` if the GitHub org/repo
+# differs at deploy time. The DO App Spec auto-clones submodules when the
+# repo references them — Dockerfile also re-runs `git submodule update`
+# defensively.
+
+services:
+  - name: web
+    dockerfile_path: Dockerfile
+    source_dir: /
+    github:
+      repo: mortonanalytics/pymyIO
+      branch: main
+      deploy_on_push: true
+    instance_count: 1
+    instance_size_slug: basic-xxs
+    http_port: 8080
+    health_check:
+      http_path: /
+      initial_delay_seconds: 15
+      period_seconds: 30
+      timeout_seconds: 5
+      success_threshold: 1
+      failure_threshold: 3
+    routes:
+      - path: /

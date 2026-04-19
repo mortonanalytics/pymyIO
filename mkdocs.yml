@@ -1,0 +1,83 @@
+site_name: pymyIO
+site_description: Python bindings for myIO — interactive d3.js charts for Jupyter, VS Code, Shiny, and more.
+site_url: https://mortonanalytics.github.io/pymyIO/
+repo_url: https://github.com/mortonanalytics/pymyIO
+repo_name: mortonanalytics/pymyIO
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - toc.follow
+    - content.code.copy
+    - content.action.edit
+    - search.suggest
+    - search.highlight
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+
+nav:
+  - Home: index.md
+  - Installation: installation.md
+  - Quickstart: quickstart.md
+  - Chart types: charts.md
+  - R → Python API map: api.md
+  - Hosts:
+      - Overview: hosts/index.md
+      - JupyterLab: hosts/jupyterlab.md
+      - VS Code: hosts/vscode.md
+      - Shiny for Python: hosts/shiny.md
+      - Classic Notebook 7.x: hosts/classic-notebook.md
+      - Google Colab: hosts/colab.md
+      - marimo: hosts/marimo.md
+      - Panel: hosts/panel.md
+      - Solara: hosts/solara.md
+      - Quarto: hosts/quarto.md
+  - Roadmap: roadmap.md
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/mortonanalytics/pymyIO
+    - icon: fontawesome/brands/python
+      link: https://pypi.org/project/pymyio/
+  generator: false
+
+not_in_nav: |
+  hosts/_release-checklist.md

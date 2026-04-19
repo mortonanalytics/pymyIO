@@ -10,6 +10,9 @@ Both packages drive the **same** d3 engine (`myIOapi.js`), wired in via a git
 submodule so there is one canonical source of truth — no duplicated JS to
 drift.
 
+- **Docs:** [https://mortonanalytics.github.io/pymyIO/](https://mortonanalytics.github.io/pymyIO/)
+- **Live gallery:** [https://pymyio-gallery.morton-analytics.com/](https://pymyio-gallery.morton-analytics.com/) (Shiny for Python, source in [`app/app.py`](app/app.py))
+
 > Status: alpha (0.1.0). API is settled and matches R's `setMargin`/`setBrush`/
 > etc. surface; six of nineteen R-side numeric transforms (`loess`, `smooth`,
 > `density`, `survfit`, `fit_distribution`, `pairwise_test`) currently raise
