@@ -10,6 +10,7 @@ Both packages drive the **same** d3 engine (`myIOapi.js`), wired in via a git
 submodule so there is one canonical source of truth — no duplicated JS to
 drift.
 
+- **PyPI:** [pypi.org/project/pymyio](https://pypi.org/project/pymyio/)
 - **Docs:** [https://mortonanalytics.github.io/pymyIO/](https://mortonanalytics.github.io/pymyIO/)
 - **Live gallery:** [https://pymyio.morton-analytics.com/](https://pymyio.morton-analytics.com/) (Shiny for Python, source in [`app/app.py`](app/app.py))
 
@@ -22,7 +23,7 @@ drift.
 ## Installation
 
 ```bash
-pip install pymyio          # once published to PyPI
+pip install pymyio
 ```
 
 For development:
