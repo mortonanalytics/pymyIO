@@ -170,9 +170,107 @@ def test_boxplot_composite_emits_box_and_outliers():
         mapping={"x_var": "x", "y_var": "y"},
     )
     layers = chart.to_config()["layers"]
-    assert [layer["type"] for layer in layers] == ["boxplot", "point"]
-    assert layers[0]["transform"] == "quantiles"
-    assert layers[1]["transform"] == "outliers"
+    assert [layer["type"] for layer in layers] == [
+        "rangeBar", "point", "point", "point", "point",
+    ]
+    assert [layer["_compositeRole"] for layer in layers] == [
+        "iqr_box", "whisker_low", "whisker_high", "median", "outliers",
+    ]
+    assert {layer["transform"] for layer in layers} == {"identity"}
+    assert layers[0]["mapping"] == {
+        "x_var": "x_var", "low_y": "low_y", "high_y": "high_y", "group": "group",
+    }
+    assert layers[-1]["data"] == [{"x_var": 1, "y_var": 100.0, "group": "a"}]
+
+
+def test_violin_composite_emits_density_box_median_and_points():
+    rows = [{"x": "a", "y": v} for v in [10, 11, 12, 13, 14, 15]]
+    chart = MyIO(data=rows).add_layer(
+        type="violin", label="violin",
+        mapping={"x_var": "x", "y_var": "y"},
+        options={"showPoints": True},
+    )
+    layers = chart.to_config()["layers"]
+    assert [layer["type"] for layer in layers] == ["area", "rangeBar", "point", "point"]
+    assert [layer["_compositeRole"] for layer in layers] == [
+        "density_area", "iqr_box", "median", "points",
+    ]
+    assert {layer["transform"] for layer in layers} == {"identity"}
+    assert layers[0]["mapping"] == {
+        "x_var": "x_var", "y_var": "y_var", "low_x": "low_x",
+        "high_x": "high_x", "group": "group",
+    }
+    assert layers[-1]["data"][0]["group"] == "a"
+    assert len(layers[-1]["data"]) == len(rows)
+
+
+def test_ridgeline_composite_emits_group_density_layers():
+    rows = (
+        [{"x": v, "group": "a"} for v in [1, 2, 3, 4, 5]]
+        + [{"x": v, "group": "b"} for v in [2, 3, 4, 5, 6]]
+    )
+    chart = MyIO(data=rows).add_layer(
+        type="ridgeline", label="ridge",
+        mapping={"x_var": "x", "y_var": "x", "group": "group"},
+    )
+    layers = chart.to_config()["layers"]
+    assert [layer["type"] for layer in layers] == ["area", "area"]
+    assert [layer["_compositeRole"] for layer in layers] == [
+        "density_area", "density_area",
+    ]
+    assert {layer["transform"] for layer in layers} == {"identity"}
+    assert [layer["data"][0]["group"] for layer in layers] == ["a", "b"]
+    assert layers[0]["mapping"] == {
+        "x_var": "x_var", "low_y": "low_y", "high_y": "high_y", "group": "group",
+    }
+
+
+def test_qq_composite_emits_reference_line_and_points():
+    rows = [{"y": v} for v in [1, 2, 3, 4, 5]]
+    chart = MyIO(data=rows).add_layer(
+        type="qq", label="qq",
+        mapping={"y_var": "y"},
+    )
+    layers = chart.to_config()["layers"]
+    assert [layer["type"] for layer in layers] == ["line", "point"]
+    assert [layer["_compositeRole"] for layer in layers] == ["reference", "scatter"]
+    assert {layer["transform"] for layer in layers} == {"identity"}
+    assert len(layers[0]["data"]) == 2
+    assert [row["y_var"] for row in layers[1]["data"]] == [1.0, 2.0, 3.0, 4.0, 5.0]
+
+
+def test_survfit_composite_emits_kaplan_meier_line():
+    rows = [{"time": 1, "status": 1}, {"time": 2, "status": 0}, {"time": 3, "status": 1}]
+    chart = MyIO(data=rows).add_layer(
+        type="survfit", label="km",
+        mapping={"time": "time", "status": "status"},
+    )
+    layers = chart.to_config()["layers"]
+    assert [layer["type"] for layer in layers] == ["line"]
+    assert layers[0]["_compositeRole"] == "km"
+    assert layers[0]["transform"] == "survfit"
+    assert layers[0]["transformMeta"]["name"] == "survfit"
+    assert {"time", "survival", "n_at_risk", "n_event"} <= set(layers[0]["data"][0])
+
+
+def test_histogram_fit_composite_emits_histogram_and_fit_line():
+    rows = [{"value": v} for v in [1, 2, 3, 4, 5]]
+    chart = MyIO(data=rows).add_layer(
+        type="histogram_fit", label="hist-fit",
+        mapping={"value": "value"},
+    )
+    layers = chart.to_config()["layers"]
+    assert [layer["type"] for layer in layers] == ["histogram", "line"]
+    assert [layer["_compositeRole"] for layer in layers] == ["hist", "fit"]
+    assert [layer["transform"] for layer in layers] == ["identity", "fit_distribution"]
+    assert layers[0]["data"] == [
+        {"value": 1, "_source_key": "row_1"},
+        {"value": 2, "_source_key": "row_2"},
+        {"value": 3, "_source_key": "row_3"},
+        {"value": 4, "_source_key": "row_4"},
+        {"value": 5, "_source_key": "row_5"},
+    ]
+    assert layers[1]["transformMeta"]["name"] == "fit_distribution"
 
 
 # ---- setters ------------------------------------------------------------
