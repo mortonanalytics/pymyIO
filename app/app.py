@@ -263,6 +263,40 @@ app_ui = ui.page_navbar(
                 output_myio("qq_plot"),
             ),
         ),
+        ui.nav_panel("Loess Smoother",
+            ui.layout_sidebar(
+                ui.sidebar(
+                    ui.input_slider("loess_span", "Span",
+                        min=0.2, max=0.9, value=0.5, step=0.05),
+                    ui.input_slider("loess_noise", "Noise",
+                        min=0.0, max=1.0, value=0.3, step=0.1),
+                ),
+                output_myio("loess_plot"),
+            ),
+        ),
+        ui.nav_panel("Survival (Kaplan-Meier)",
+            ui.layout_sidebar(
+                ui.sidebar(
+                    ui.input_checkbox("km_grouped", "Stratify by treatment", value=True),
+                    ui.input_slider("km_n", "Sample size per arm",
+                        min=30, max=200, value=80, step=10),
+                ),
+                output_myio("survfit_plot"),
+            ),
+        ),
+        ui.nav_panel("Distribution Fit",
+            ui.layout_sidebar(
+                ui.sidebar(
+                    ui.input_select("fit_family", "Distribution family",
+                        choices=["normal", "lognormal", "exponential"]),
+                    ui.input_slider("fit_n", "Sample size",
+                        min=50, max=500, value=200, step=50),
+                ),
+                output_myio("histfit_plot"),
+            ),
+        ),
+        ui.nav_panel("Pairwise Comparison",
+            ui.div({"class": "chart-container"}, output_myio("comparison_plot"))),
     ),
     ui.nav_menu(
         "Specialized",
@@ -399,26 +433,9 @@ app_ui = ui.page_navbar(
     ui.nav_panel("Known gaps",
         ui.div(
             {"class": "container", "style": "max-width: 800px; padding-top: 2rem;"},
-            ui.h2("Charts not yet rendering on 0.1.x"),
-            ui.p("Statistical transforms and composite expansions still pending. "
-                 "All other tabs render against the live d3 engine."),
-            ui.div({"class": "deferred-card"},
-                ui.tags.b("Survival (Kaplan-Meier) — survfit"),
-                ui.tags.span(" — PYMYIO-T03, target 0.3.0"),
-                ui.p("Composite expansion still emits transform=survfit which "
-                     "renders the line layer but expects per-row Greenwood SE "
-                     "fields the engine doesn't synthesize.")),
-            ui.div({"class": "deferred-card"},
-                ui.tags.b("Distribution fit — histogram_fit"),
-                ui.tags.span(" — PYMYIO-T04, target 0.3.0"),
-                ui.p("Composite still emits transform=fit_distribution on the "
-                     "line layer; needs the equivalent of R's composite_histogram_fit "
-                     "to bin + scale.")),
-            ui.div({"class": "deferred-card"},
-                ui.tags.b("Pairwise tests (comparison brackets)"),
-                ui.tags.span(" — PYMYIO-T05, target 0.3.0"),
-                ui.p("Bracket renderer needs the pairwise_test transform output "
-                     "in a specific shape; composite expansion not yet ported.")),
+            ui.h2("Known gaps"),
+            ui.p("All chart types and transforms render against the live d3 engine. "
+                 "One pre-validation bug remains:"),
             ui.div({"class": "deferred-card"},
                 ui.tags.b("Mean ± CI on rangeBar"),
                 ui.tags.span(" — pymyio required-mapping bug (PYMYIO-C05)"),
@@ -615,6 +632,98 @@ def server(input, output, session):
             .add_layer(type="qq", color=OKABE_ITO[:3], label="Q-Q",
                        mapping=mapping, options={"envelope": False})
             .set_axis_format(x_label="Theoretical Quantiles", y_label="Sample Quantiles")
+            .render()
+        )
+
+    @render_myio
+    def loess_plot():
+        xs = list(range(1, 81))
+        noise_scale = float(input.loess_noise())
+        noise = _seeded_normal(11, 80, 0.0, noise_scale)
+        ys = [math.sin(x / 8) + 0.02 * x + n for x, n in zip(xs, noise)]
+        df = pd.DataFrame({"x": xs, "y": ys})
+        return (
+            MyIO(data=df)
+            .add_layer(type="point", color="#9C9C9C", label="Observations",
+                       mapping={"x_var": "x", "y_var": "y"})
+            .add_layer(type="line", transform="loess", color="#4E79A7",
+                       label="Loess fit", mapping={"x_var": "x", "y_var": "y"},
+                       options={"span": float(input.loess_span())})
+            .set_axis_format(x_format=".0f", x_label="Time", y_label="Signal")
+            .render()
+        )
+
+    @render_myio
+    def survfit_plot():
+        n = int(input.km_n())
+        # Synthetic two-arm trial: control hazard 1/40, treatment 1/70.
+        rc = random.Random(101)
+        rt = random.Random(202)
+        control_t = [rc.expovariate(1 / 40) for _ in range(n)]
+        treat_t = [rt.expovariate(1 / 70) for _ in range(n)]
+        # 70% events, 30% right-censored at the observation horizon.
+        rs = random.Random(303)
+        control_s = [1 if rs.random() < 0.7 else 0 for _ in range(n)]
+        treat_s = [1 if rs.random() < 0.7 else 0 for _ in range(n)]
+        rows = (
+            [{"time": t, "status": s, "arm": "control"}
+             for t, s in zip(control_t, control_s)]
+            + [{"time": t, "status": s, "arm": "treatment"}
+               for t, s in zip(treat_t, treat_s)]
+        )
+        df = pd.DataFrame(rows)
+        mapping = {"time": "time", "status": "status"}
+        if input.km_grouped():
+            mapping["group"] = "arm"
+        return (
+            MyIO(data=df)
+            .add_layer(type="survfit", color=OKABE_ITO[:2],
+                       label="Kaplan-Meier", mapping=mapping)
+            .set_axis_format(x_format=".0f", y_format=".0%",
+                             x_label="Time (weeks)", y_label="Survival")
+            .render()
+        )
+
+    @render_myio
+    def histfit_plot():
+        n = int(input.fit_n())
+        family = input.fit_family()
+        if family == "normal":
+            vals = _seeded_normal(31, n, 50, 10)
+        elif family == "lognormal":
+            r = random.Random(32)
+            vals = [math.exp(r.gauss(3.5, 0.4)) for _ in range(n)]
+        else:  # exponential
+            r = random.Random(33)
+            vals = [r.expovariate(1 / 25) for _ in range(n)]
+        df = pd.DataFrame({"value": vals})
+        return (
+            MyIO(data=df)
+            .add_layer(type="histogram_fit", color="#76B7B2",
+                       label=f"{family.title()} fit",
+                       mapping={"value": "value"},
+                       options={"family": family})
+            .set_axis_format(x_format=".0f", y_format=".0f",
+                             x_label="Value", y_label="Frequency")
+            .render()
+        )
+
+    @render_myio
+    def comparison_plot():
+        rows = []
+        r = random.Random(99)
+        for grp, mu in [("Control", 5.0), ("Drug A", 6.5), ("Drug B", 5.8)]:
+            for _ in range(40):
+                rows.append({"group": grp, "score": r.gauss(mu, 1.2)})
+        df = pd.DataFrame(rows)
+        return (
+            MyIO(data=df)
+            .add_layer(type="comparison", color=OKABE_ITO[:3],
+                       label="Treatment comparison",
+                       mapping={"x_var": "group", "y_var": "score"})
+            .define_categorical_axis(x_axis=True)
+            .set_axis_format(y_format=".1f",
+                             x_label="Treatment", y_label="Score")
             .render()
         )
 
