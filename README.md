@@ -1,5 +1,10 @@
 # pymyIO
 
+[![PyPI version](https://img.shields.io/pypi/v/pymyio.svg)](https://pypi.org/project/pymyio/)
+[![Python versions](https://img.shields.io/pypi/pyversions/pymyio.svg)](https://pypi.org/project/pymyio/)
+[![PyPI downloads](https://img.shields.io/pypi/dm/pymyio.svg)](https://pypi.org/project/pymyio/)
+[![License](https://img.shields.io/pypi/l/pymyio.svg)](https://github.com/mortonanalytics/pymyIO/blob/main/LICENSE)
+
 Python bindings for [myIO](https://github.com/mortonanalytics/myIO) — the
 d3.js-based interactive chart library originally shipped as an R package.
 
