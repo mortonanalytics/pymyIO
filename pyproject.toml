@@ -1,10 +1,10 @@
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
 
 [project]
 name = "pymyio"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Python bindings for the myIO d3.js chart library"
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -52,6 +52,12 @@ dev = [
 Homepage = "https://github.com/mortonanalytics/pymyIO"
 Source = "https://github.com/mortonanalytics/pymyIO"
 "Sister R package" = "https://github.com/mortonanalytics/myIO"
+
+[tool.hatch.version]
+source = "vcs"
+
+[tool.hatch.build.hooks.vcs]
+version-file = "src/pymyio/_version.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/pymyio"]

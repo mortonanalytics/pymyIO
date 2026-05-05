@@ -68,7 +68,13 @@ def test_wheel_static_files_exist_on_disk():
     assert (static / "lib" / "d3-sankey.min.js").is_file()
 
 
-def test_version_line_in_pyproject_matches_package(pyproject: dict):
+def test_version_is_dynamic_and_resolves(pyproject: dict):
     import pymyio
 
-    assert pyproject["project"]["version"] == pymyio.__version__
+    assert "version" in pyproject["project"].get("dynamic", []), (
+        "pyproject must declare version as dynamic for hatch-vcs to manage it"
+    )
+    assert "version" not in pyproject["project"], (
+        "pyproject must not have a static version field when using hatch-vcs"
+    )
+    assert isinstance(pymyio.__version__, str) and pymyio.__version__

@@ -11,4 +11,5 @@ dist/
 .ipynb_checkpoints/
 .DS_Store
 site/
+src/pymyio/_version.py
 
