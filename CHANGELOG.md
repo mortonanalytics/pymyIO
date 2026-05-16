@@ -4,6 +4,65 @@ All notable changes to pymyIO are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.1] — 2026-05-16
+
+### Added
+
+- `MyIO(title=...)` constructor kwarg and `MyIO.set_title(title)` builder for
+  the new in-SVG chart title surface. `set_title(None)` clears. Mirrors R
+  `myIO(title=...)` / `setTitle()` from upstream
+  [myIO#48](https://github.com/mortonanalytics/myIO/pull/48). Payload writes
+  `config.title` (string or `None`).
+
+### Engine (vendored bundle bump to myIO PR #48 tip @ e2fd534)
+
+PR #48 (`[engine-additive]` — additive payload, no breaking changes):
+
+- **Title / axis label / legend rendering.** Titles, `xAxisLabel`,
+  `yAxisLabel`, and a compact inline legend now render inside the SVG.
+  `set_axis_format(x_label=..., y_label=...)` already passed labels through;
+  no Python change required for axis labels.
+- **rangeBar errorbar style.** New `options.style = "errorbar"` mode renders
+  mean ± CI charts. Layer config:
+  `type="rangeBar"`, `options={"style": "errorbar"}`,
+  `mapping={"x_var", "low_y", "high_y", "y_var"}`. `y_var` (the mean
+  position) is **required** when `style="errorbar"`; omitting it warns to
+  the console and skips render. Default style (no `options.style`) keeps
+  the existing filled-bar behavior.
+- **Horizontal bar charts** render correctly (previously empty + ~186
+  console errors).
+- **Gauge** charts get traffic-light threshold zones by default.
+- **Treemap** labels show full words instead of first-letter abbreviations.
+- **Waterfall** draws connector lines between bars.
+- **Candlestick / moving-average** x-axis can format as dates via
+  `xAxisFormat = "yearMon"` (accepts R-style days-since-1970 or JS
+  milliseconds-since-epoch).
+- **Multi-series** charts render a compact inline legend in addition to the
+  action-sheet legend.
+
+### Fixed
+
+- **flipAxis behavior when `categorical_x=True`.** When a chart had
+  `categoricalScale.xAxis = True` AND `flipAxis(True)` with no explicit
+  scale hints, the band scale previously stayed on x (the flip was silently
+  cancelled). It now correctly moves to y as the flip intends. Users who
+  relied on the broken behavior for horizontal categorical charts will see
+  their charts render differently. No pymyIO API change.
+- `OKABE_ITO_PALETTE[7]` corrected from `#000000` to `#999999` to match R
+  upstream and the original Okabe-Ito colorblind-safe palette.
+- `to_standalone_html()` inline-asset escape no longer corrupts JS regex
+  literals containing `</`. The previous blanket `</` → `<\/` rewrite broke
+  patterns like `/</g` (introduced into the engine bundle by PR #48). The
+  escape is now narrowed to `</script` and `</style` (the only sequences
+  the HTML spec treats as terminators).
+
+### Changed
+
+- `to_standalone_html()` inline-HTML soft-ceiling warning raised from 2 MB
+  to 4 MB to absorb the larger engine bundle (now ~2.26 MB) without warning
+  on the empty-chart baseline. Oversized-payload warnings still fire as
+  intended.
+
 ## [0.1.0] — 2026-05-04
 
 First public release. Python bindings for the
@@ -71,4 +130,5 @@ shared with the R package.
   Workaround: pre-aggregate and pass `low_y`/`high_y` directly. Tracked
   as PYMYIO-C05.
 
+[0.1.1]: https://github.com/mortonanalytics/pymyIO/releases/tag/v0.1.1
 [0.1.0]: https://github.com/mortonanalytics/pymyIO/releases/tag/v0.1.0

@@ -216,17 +216,18 @@ def test_closing_script_tag_in_config_value_is_escaped():
     assert "<\\/script>" in island_body
 
 
-# ---- 2 MB soft-ceiling warning ---------------------------------------------
+# ---- 4 MB soft-ceiling warning ---------------------------------------------
 
 
 def test_inline_size_warning_triggers_when_config_is_huge():
-    big = [{"v": "x" * 4096} for _ in range(600)]  # >= 2 MB
+    big = [{"v": "x" * 4096} for _ in range(600)]  # data alone ~2.4 MB; pushes
+    # total inline HTML (engine + d3 + payload) past the 4 MB soft ceiling.
     chart = MyIO(data=big).add_layer(
         type="text",
         label="big",
         mapping={"x_var": "v", "y_var": "v", "label": "v"},
     )
-    with pytest.warns(MyIOStaticWarning, match=r"2 MB"):
+    with pytest.warns(MyIOStaticWarning, match=r"4 MB"):
         to_standalone_html(chart)
 
 
@@ -268,3 +269,46 @@ def test_standalone_html_renders_in_browser(tmp_path):
         pytest.skip(f"playwright browser unavailable: {e}")
 
     assert svg_count >= 1
+
+
+@pytest.mark.skipif(
+    importlib.util.find_spec("playwright") is None,
+    reason="playwright not installed",
+)
+def test_axis_labels_and_title_render_in_browser(tmp_path):
+    """Engine renders xAxisLabel / yAxisLabel into `.myIO-axis-title-{x,y}`
+    elements and the chart title into the SVG (added in upstream PR #48)."""
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError:
+        pytest.skip("playwright.sync_api not available")
+
+    chart = (
+        MyIO(data=[{"wt": 2.620, "mpg": 21.0}, {"wt": 3.215, "mpg": 21.4}],
+             title="Miles per gallon")
+        .add_layer(type="point", label="pts",
+                   mapping={"x_var": "wt", "y_var": "mpg"})
+        .set_axis_format(x_label="Weight (1000 lbs)", y_label="MPG")
+    )
+    html = to_standalone_html(chart, include_assets="inline")
+    path = tmp_path / "chart.html"
+    path.write_text(html, encoding="utf-8")
+
+    try:
+        with sync_playwright() as p:
+            try:
+                browser = p.chromium.launch()
+            except Exception as e:
+                pytest.skip(f"chromium not installed: {e}")
+            page = browser.new_page()
+            page.goto(f"file://{path}")
+            page.wait_for_selector(".myIO-axis-title-x", timeout=10_000)
+            # SVG <text> is not an HTMLElement; use text_content().
+            x_text = page.locator(".myIO-axis-title-x").first.text_content()
+            y_text = page.locator(".myIO-axis-title-y").first.text_content()
+            browser.close()
+    except Exception as e:
+        pytest.skip(f"playwright browser unavailable: {e}")
+
+    assert x_text == "Weight (1000 lbs)"
+    assert y_text == "MPG"

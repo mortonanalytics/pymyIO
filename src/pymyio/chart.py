@@ -17,7 +17,7 @@ from .transforms import get_transform
 
 OKABE_ITO_PALETTE: List[str] = [
     "#E69F00", "#56B4E9", "#009E73", "#F0E442",
-    "#0072B2", "#D55E00", "#CC79A7", "#000000",
+    "#0072B2", "#D55E00", "#CC79A7", "#999999",
 ]
 
 # Full canonical type list (matches R/util.R::ALLOWED_TYPES).
@@ -145,6 +145,21 @@ COMPOSITE_TYPES: Tuple[str, ...] = (
 )
 
 DataFrameLike = Any
+
+
+# ---- validators ------------------------------------------------------------
+
+def _validate_title(title: Any, caller: str) -> None:
+    """Match R upstream: title must be None or a single character string.
+
+    R raises a single ``stop()``; here ``TypeError`` is raised for non-string
+    non-None values. The error message mirrors R for cross-language parity.
+    """
+    if title is None or isinstance(title, str):
+        return
+    raise TypeError(
+        f"{caller}(): `title` must be NULL or a single character string."
+    )
 
 
 # ---- data coercion ---------------------------------------------------------
@@ -581,6 +596,7 @@ class MyIO:
         height: Union[int, str] = "400px",
         element_id: Optional[str] = None,
         sparkline: bool = False,
+        title: Optional[str] = None,
     ):
         self._data = data
         self.width = width
@@ -590,8 +606,11 @@ class MyIO:
         if sparkline and height == "400px":
             self.height = 20
 
+        _validate_title(title, caller="myIO")
+
         self.config: dict = {
             "specVersion": 1,
+            "title": title,
             "layers": [],
             "layout": {
                 "margin": {"top": 30, "bottom": 60, "left": 50, "right": 5},
@@ -840,6 +859,23 @@ class MyIO:
                 )
 
     # ----- chart-level setters ---------------------------------------------
+
+    def set_title(self, title: Optional[str]) -> "MyIO":
+        """Set or clear the chart title rendered inside the SVG.
+
+        Mirrors R's ``setTitle()``. Pass a string to set, ``None`` to clear.
+        Raises ``TypeError`` for non-string non-None values.
+
+        Examples
+        --------
+        >>> MyIO().set_title("Miles per gallon")  # doctest: +ELLIPSIS
+        <pymyio.chart.MyIO object at ...>
+        >>> MyIO(title="hi").set_title(None).to_config()["title"] is None
+        True
+        """
+        _validate_title(title, caller="setTitle")
+        self.config["title"] = title
+        return self
 
     def set_margin(self, top: int = 30, bottom: int = 60, left: int = 50, right: int = 5) -> "MyIO":
         self.config["layout"]["margin"] = {

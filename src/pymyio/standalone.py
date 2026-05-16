@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import html
 import json
+import re
 import uuid
 import warnings
 from importlib.resources import files
@@ -26,7 +27,7 @@ class MyIOStaticWarning(UserWarning):
 
     Two triggers today: (1) the chart was built with interactive-only
     features (brush, annotation, drag) that require a Python kernel to
-    round-trip events; (2) inline-mode output exceeds a 2 MB soft ceiling.
+    round-trip events; (2) inline-mode output exceeds a 4 MB soft ceiling.
     """
 
 
@@ -38,7 +39,7 @@ _ASSET_KEYS: Tuple[str, ...] = (
     "lib/d3-sankey.min.js",
 )
 
-_INLINE_SIZE_WARN_BYTES = 2 * 1024 * 1024
+_INLINE_SIZE_WARN_BYTES = 4 * 1024 * 1024
 
 _INTERACTIVE_KEYS = ("brush", "annotation")
 
@@ -120,7 +121,7 @@ def to_standalone_html(
         )
         if len(html_str.encode("utf-8")) > _INLINE_SIZE_WARN_BYTES:
             warnings.warn(
-                "Inline HTML exceeds 2 MB; pass include_assets='bundled' to "
+                "Inline HTML exceeds 4 MB; pass include_assets='bundled' to "
                 "emit sidecar assets instead.",
                 MyIOStaticWarning,
                 stacklevel=2,
@@ -200,14 +201,19 @@ def _js_dims(width: Union[int, str], height: Union[int, str]) -> Tuple[str, str]
     return one(width), one(height)
 
 
-def _escape_script_body(s: str) -> str:
-    """Escape any literal closing-tag sequence inside an inline asset.
+_CLOSING_TAG_RE = re.compile(r"</(script|style)", re.IGNORECASE)
 
-    Any ``</`` inside a ``<script>`` or ``<style>`` body would close the
-    enclosing tag and leak the rest of the asset into the document. JS and
-    CSS tolerate the backslash variant.
+
+def _escape_script_body(s: str) -> str:
+    """Escape literal ``</script`` / ``</style`` sequences inside an inline asset.
+
+    Per the HTML spec, a ``<script>`` body terminates only on ``</script``
+    (case-insensitive); a ``<style>`` body terminates only on ``</style``.
+    Bare ``</`` is harmless and must be left alone, because JS regex literals
+    like ``/</g`` contain ``</`` and rewriting them to ``<\\/`` corrupts the
+    regex (the second ``/`` is no longer the terminator).
     """
-    return s.replace("</", "<\\/")
+    return _CLOSING_TAG_RE.sub(lambda m: "<\\/" + m.group(1), s)
 
 
 def _render_inline(

@@ -151,3 +151,43 @@ def test_allowed_types_covers_full_chart_catalog():
         "heatmap", "candlestick", "waterfall", "sankey", "boxplot",
         "violin", "ridgeline", "donut", "gauge", "hexbin", "treemap",
     }
+
+
+# ---- title surface (parity with R myIO(title=) / setTitle()) ----------------
+
+def test_title_defaults_to_none_in_config():
+    assert MyIO().to_config()["title"] is None
+
+
+def test_title_constructor_kwarg_sets_config_title():
+    cfg = MyIO(title="Miles per gallon").to_config()
+    assert cfg["title"] == "Miles per gallon"
+
+
+def test_set_title_builder_sets_and_clears():
+    chart = MyIO().set_title("Initial")
+    assert chart.to_config()["title"] == "Initial"
+    chart.set_title("Updated")
+    assert chart.to_config()["title"] == "Updated"
+    chart.set_title(None)
+    assert chart.to_config()["title"] is None
+
+
+def test_set_title_rejects_non_string():
+    with pytest.raises(TypeError, match="must be NULL or a single character string"):
+        MyIO().set_title(123)
+    with pytest.raises(TypeError, match="must be NULL or a single character string"):
+        MyIO().set_title(["a", "b"])
+
+
+def test_constructor_title_rejects_non_string():
+    with pytest.raises(TypeError, match="must be NULL or a single character string"):
+        MyIO(title=42)
+
+
+def test_okabe_ito_palette_matches_r_canonical_set():
+    # R/util.R::OKABE_ITO_PALETTE (post-revert in PR #48 review fixes).
+    assert OKABE_ITO_PALETTE == [
+        "#E69F00", "#56B4E9", "#009E73", "#F0E442",
+        "#0072B2", "#D55E00", "#CC79A7", "#999999",
+    ]
