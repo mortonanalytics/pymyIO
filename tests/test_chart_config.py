@@ -24,7 +24,10 @@ def test_default_config_shape():
     assert cfg["layout"]["suppressLegend"] is False
     assert cfg["scales"]["colorScheme"]["enabled"] is False
     assert cfg["scales"]["colorScheme"]["colors"] == OKABE_ITO_PALETTE
-    assert cfg["axes"]["xAxisFormat"] == "s"
+    assert cfg["axes"]["xAxisFormat"] == ""
+    assert cfg["axes"]["yAxisFormat"] == ""
+    assert cfg["axes"]["toolTipFormat"] == ""
+    assert cfg["axes"]["xTickLabels"] is None
     assert cfg["transitions"]["speed"] == 1000
 
 
@@ -128,6 +131,18 @@ def test_setters_chain_and_mutate_config():
     assert cfg["layout"]["suppressLegend"] is True
     assert cfg["scales"]["flipAxis"] is True
     assert cfg["referenceLines"] == {"x": [0], "y": [10, 20]}
+
+
+def test_set_axis_format_label_only_preserves_existing_formats():
+    cfg = (
+        MyIO(data=SAMPLE)
+        .set_axis_format(y_format=".1%")
+        .set_axis_format(y_label="Rate")
+        .to_config()
+    )
+    assert cfg["axes"]["yAxisFormat"] == ".1%"
+    assert cfg["axes"]["yAxisLabel"] == "Rate"
+    assert cfg["axes"]["xAxisFormat"] == ""
 
 
 def test_to_config_returns_independent_copy():

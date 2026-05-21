@@ -144,6 +144,21 @@ COMPOSITE_TYPES: Tuple[str, ...] = (
     "comparison", "qq", "survfit", "histogram_fit",
 )
 
+POSITIONAL_CATEGORY_COMPOSITES = {"boxplot", "violin", "comparison"}
+
+TRANSFORM_AUTO_MAPPING: dict = {
+    "ci": {"low_y": "low_y", "high_y": "high_y"},
+    "mean_ci": {"low_y": "low_y", "high_y": "high_y"},
+    "pairwise_test": {
+        "x1": "x1", "x2": "x2", "y": "y",
+        "label": "label", "p_value": "p_value",
+    },
+    "survfit": {
+        "x_var": "time", "y_var": "surv",
+        "low_y": "ci_lower", "high_y": "ci_upper",
+    },
+}
+
 DataFrameLike = Any
 
 
@@ -552,10 +567,7 @@ def _expand_composite(type: str, records: List[dict], mapping: Mapping[str, str]
     if type == "qq":
         return _expand_qq(records, mapping, label, color, options)
     if type == "comparison":
-        return [
-            {"type": "point", "label": f"{label}::points",
-             "data": records, "mapping": mapping, "color": color,
-             "transform": "identity", "options": options, "role": "raw"},
+        return _expand_boxplot(records, mapping, label, color, options) + [
             {"type": "bracket", "label": f"{label}::brackets",
              "data": records, "mapping": mapping, "color": color,
              "transform": "pairwise_test", "options": options, "role": "test"},
@@ -576,6 +588,51 @@ def _expand_composite(type: str, records: List[dict], mapping: Mapping[str, str]
              "transform": "fit_distribution", "options": options, "role": "fit"},
         ]
     raise ValueError(f"Unknown composite type '{type}'.")
+
+
+def _inject_transform_mapping(transform: str, mapping: Mapping[str, str]) -> dict:
+    out = dict(mapping)
+    for key, value in TRANSFORM_AUTO_MAPPING.get(transform, {}).items():
+        out.setdefault(key, value)
+    return out
+
+
+def _derive_positional_x_tick_labels(type: str, sub_specs: List[dict]) -> Optional[dict]:
+    if type not in POSITIONAL_CATEGORY_COMPOSITES:
+        return None
+
+    labels: dict = {}
+    numeric_positions = []
+    for spec in sub_specs:
+        mapping = spec.get("mapping", {})
+        x_col = mapping.get("x_var")
+        group_col = mapping.get("group")
+        if not x_col or not group_col:
+            continue
+        for row in spec.get("data", []):
+            if x_col not in row or group_col not in row:
+                continue
+            position = row[x_col]
+            label = row[group_col]
+            if position is None or label is None:
+                continue
+            try:
+                numeric_position = float(position)
+            except (TypeError, ValueError):
+                continue
+            if abs(numeric_position - round(numeric_position)) >= 1e-9:
+                continue
+            key = str(int(round(numeric_position)))
+            if key not in labels:
+                labels[key] = str(label)
+                numeric_positions.append((numeric_position, key))
+
+    if not labels:
+        return None
+    ordered = {}
+    for _, key in sorted(numeric_positions, key=lambda item: item[0]):
+        ordered[key] = labels[key]
+    return ordered
 
 
 # ---- chart -----------------------------------------------------------------
@@ -629,11 +686,12 @@ class MyIO:
                 },
             },
             "axes": {
-                "xAxisFormat": "s",
-                "yAxisFormat": "s",
+                "xAxisFormat": "",
+                "yAxisFormat": "",
                 "xAxisLabel": None,
                 "yAxisLabel": None,
-                "toolTipFormat": "s",
+                "toolTipFormat": "",
+                "xTickLabels": None,
             },
             "interactions": {
                 "dragPoints": False,
@@ -726,13 +784,19 @@ class MyIO:
         if type in COMPOSITE_TYPES:
             sub_specs = _expand_composite(type, records, mapping, label, color,
                                           dict(options or {}))
+            tick_labels = _derive_positional_x_tick_labels(type, sub_specs)
+            if tick_labels:
+                self.config["axes"]["xTickLabels"] = tick_labels
             for order, spec in enumerate(sub_specs, start=1):
+                spec_mapping = _inject_transform_mapping(
+                    spec["transform"], spec["mapping"],
+                )
                 tx_records, tx_meta = get_transform(spec["transform"])(
-                    spec["data"], spec["mapping"], spec.get("options"),
+                    spec["data"], spec_mapping, spec.get("options"),
                 )
                 self.config["layers"].append(self._build_layer(
                     layer_type=spec["type"], label=spec["label"],
-                    data=tx_records, mapping=spec["mapping"],
+                    data=tx_records, mapping=spec_mapping,
                     color=spec["color"], transform=spec["transform"],
                     options=spec.get("options"),
                     layer_id=layer_id, order=order,
@@ -746,9 +810,10 @@ class MyIO:
                 records, mapping, type, label, color, transform, options, layer_id,
             )
         else:
-            tx_records, tx_meta = get_transform(transform)(records, mapping, options)
+            layer_mapping = _inject_transform_mapping(transform, mapping)
+            tx_records, tx_meta = get_transform(transform)(records, layer_mapping, options)
             self.config["layers"].append(self._build_layer(
-                layer_type=type, label=label, data=tx_records, mapping=mapping,
+                layer_type=type, label=label, data=tx_records, mapping=layer_mapping,
                 color=color, transform=transform, options=options,
                 layer_id=layer_id, order=1, transform_meta=tx_meta,
             ))

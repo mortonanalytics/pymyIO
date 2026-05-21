@@ -181,6 +181,7 @@ def test_boxplot_composite_emits_box_and_outliers():
         "x_var": "x_var", "low_y": "low_y", "high_y": "high_y", "group": "group",
     }
     assert layers[-1]["data"] == [{"x_var": 1, "y_var": 100.0, "group": "a"}]
+    assert chart.to_config()["axes"]["xTickLabels"] == {"1": "a"}
 
 
 def test_violin_composite_emits_density_box_median_and_points():
@@ -202,6 +203,28 @@ def test_violin_composite_emits_density_box_median_and_points():
     }
     assert layers[-1]["data"][0]["group"] == "a"
     assert len(layers[-1]["data"]) == len(rows)
+    assert chart.to_config()["axes"]["xTickLabels"] == {"1": "a"}
+
+
+def test_comparison_composite_emits_boxplot_layers_and_mapped_bracket():
+    rows = (
+        [{"x": "a", "y": v} for v in [10, 11, 12, 13]]
+        + [{"x": "b", "y": v} for v in [20, 21, 22, 23]]
+    )
+    chart = MyIO(data=rows).add_layer(
+        type="comparison", label="cmp",
+        mapping={"x_var": "x", "y_var": "y"},
+        options={"showOutliers": False},
+    )
+    cfg = chart.to_config()
+    layers = cfg["layers"]
+    assert [layer["type"] for layer in layers] == [
+        "rangeBar", "point", "point", "point", "bracket",
+    ]
+    assert layers[-1]["mapping"]["x1"] == "x1"
+    assert layers[-1]["mapping"]["x2"] == "x2"
+    assert layers[-1]["mapping"]["y"] == "y"
+    assert cfg["axes"]["xTickLabels"] == {"1": "a", "2": "b"}
 
 
 def test_ridgeline_composite_emits_group_density_layers():
