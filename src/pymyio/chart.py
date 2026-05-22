@@ -745,7 +745,17 @@ class MyIO:
                 "unique label."
             )
 
+        # Inject transform-supplied mappings (e.g. mean_ci -> low_y/high_y)
+        # before validating, so transform-derived fields satisfy the contract.
+        # Mirrors R addIoLayer()'s inject_transform_mapping ordering.
+        mapping = _inject_transform_mapping(transform, mapping)
+
         required = _REQUIRED_MAPPING.get(type, ("x_var", "y_var"))
+        # `area` accepts either a center line (y_var) or an explicit band
+        # (low_y/high_y), unlike R where it is band-only. Honor the band form
+        # when both bounds are mapped so e.g. area + ci / mean_ci validates.
+        if type == "area" and "low_y" in mapping and "high_y" in mapping:
+            required = ("x_var", "low_y", "high_y")
         missing = [k for k in required if k not in mapping]
         if missing:
             raise ValueError(

@@ -4,6 +4,33 @@ All notable changes to pymyIO are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **PYMYIO-C05** — the required-mapping check now runs against the
+  transform-injected mapping, so `rangeBar` + `mean_ci` builds without
+  pre-aggregation. `area` also accepts an explicit band (`low_y`/`high_y`)
+  with no center `y_var`; simple `area` (`x_var`/`y_var`) is unchanged.
+
+### Engine (vendored bundle bump to myIO `c4aafa0` on `main`)
+
+- Consumes [myIO#49](https://github.com/mortonanalytics/myIO/pull/49)
+  (`[engine-additive]`): distribution charts (boxplot/violin/comparison)
+  render categorical group labels via the new `config.axes.xTickLabels`
+  map, axis tick formats default to the engine default (empty) instead of
+  SI (`"s"`), and comparison significance brackets are no longer dropped.
+  `set_axis_format` arguments default to `None` so a label-only call
+  preserves previously set formats.
+
+### CI
+
+- Bumped GitHub Actions off the deprecated Node 20 runtime ahead of the
+  2026-06-02 cutover: `checkout@v6`, `setup-python@v6`,
+  `upload-artifact@v7`, `download-artifact@v8`, `upload-pages-artifact@v5`,
+  `deploy-pages@v5`; dropped the now-redundant `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24`
+  stopgap in the Pages workflow.
+
 ## [0.1.1] — 2026-05-16
 
 ### Added
@@ -130,5 +157,6 @@ shared with the R package.
   Workaround: pre-aggregate and pass `low_y`/`high_y` directly. Tracked
   as PYMYIO-C05.
 
+[Unreleased]: https://github.com/mortonanalytics/pymyIO/compare/v0.1.1...HEAD
 [0.1.1]: https://github.com/mortonanalytics/pymyIO/releases/tag/v0.1.1
 [0.1.0]: https://github.com/mortonanalytics/pymyIO/releases/tag/v0.1.0

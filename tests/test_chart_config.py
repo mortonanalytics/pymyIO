@@ -64,6 +64,44 @@ def test_missing_required_mapping_raises():
         MyIO(data=SAMPLE).add_layer(type="point", label="x", mapping={"x_var": "wt"})
 
 
+def test_rangebar_mean_ci_builds_via_transform_mapping():
+    # PYMYIO-C05: required-mapping check runs against the transform-injected
+    # mapping, so mean_ci's low_y/high_y satisfy rangeBar's contract.
+    rows = [{"g": "a", "y": 1.0}, {"g": "a", "y": 2.0}, {"g": "a", "y": 3.0},
+            {"g": "b", "y": 4.0}, {"g": "b", "y": 5.0}, {"g": "b", "y": 6.0}]
+    layer = (
+        MyIO(data=rows)
+        .add_layer(type="rangeBar", label="rb",
+                   mapping={"x_var": "g", "y_var": "y"}, transform="mean_ci")
+        .to_config()["layers"][0]
+    )
+    assert layer["mapping"]["low_y"] == "low_y"
+    assert layer["mapping"]["high_y"] == "high_y"
+    assert all("low_y" in r and "high_y" in r for r in layer["data"])
+
+
+def test_area_band_form_builds_without_y_var():
+    # PYMYIO-C05: area accepts an explicit band (low_y/high_y), no center line.
+    rows = [{"t": 1, "lo": 0.5, "hi": 1.5}, {"t": 2, "lo": 1.0, "hi": 2.0}]
+    cfg = (
+        MyIO(data=rows)
+        .add_layer(type="area", label="band",
+                   mapping={"x_var": "t", "low_y": "lo", "high_y": "hi"})
+        .to_config()
+    )
+    assert cfg["layers"][0]["mapping"] == {"x_var": "t", "low_y": "lo", "high_y": "hi"}
+
+
+def test_area_simple_form_preserved_and_band_required():
+    # Regression guard: simple area (the gallery cumulative-revenue chart) keeps
+    # working; area with neither y_var nor a band still raises.
+    MyIO(data=SAMPLE).add_layer(type="area", label="simple",
+                                mapping={"x_var": "wt", "y_var": "mpg"})
+    with pytest.raises(ValueError, match="Missing required mapping"):
+        MyIO(data=SAMPLE).add_layer(type="area", label="bad",
+                                    mapping={"x_var": "wt"})
+
+
 def test_missing_column_raises():
     with pytest.raises(ValueError, match="Column 'nope' not found"):
         MyIO(data=SAMPLE).add_layer(

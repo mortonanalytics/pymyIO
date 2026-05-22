@@ -11,7 +11,7 @@ is a valid value for `MyIO.add_layer(type=...)`.
 | `point` | `x_var`, `y_var` | Pair with `transform="lm"` for a fitted line. |
 | `bar` | `x_var`, `y_var` | Call `.define_categorical_axis(x_axis=True)` for categorical x. |
 | `groupedBar` | `x_var`, `y_var`, `group` | One bar per group, dodged. |
-| `area` | `x_var`, `low_y`, `high_y` | Shaded band between `low_y` and `high_y`. |
+| `area` | `x_var` + (`y_var` or `low_y`+`high_y`) | Area to baseline (`y_var`) or a shaded band between `low_y`/`high_y`. |
 | `histogram` | `value` | Bin counts. |
 
 ## Statistical
@@ -19,7 +19,7 @@ is a valid value for `MyIO.add_layer(type=...)`.
 | Type | Required mapping | Notes |
 |---|---|---|
 | `regression` | `x_var`, `y_var` | Composite: points + fit line. `options={"method": "lm" \| "polynomial"}`. |
-| `rangeBar` | `x_var`, `low_y`, `high_y` | :material-alert: `transform="mean_ci"` doesn't work yet — see [Roadmap](roadmap.md). |
+| `rangeBar` | `x_var`, `low_y`, `high_y` | `transform="mean_ci"` also accepted with `{x_var, y_var}` — the transform synthesizes the `low_y`/`high_y` band. |
 | `qq` | `y_var` | Composite: reference line + points (envelope deferred). Pass `mapping["group"]` for per-group Q-Q. |
 | `boxplot` | `x_var`, `y_var` | Composite: IQR rangeBar + whisker points + median + Tukey outliers. |
 | `violin` | `x_var`, `y_var` | Composite: per-group KDE area + optional box / median / raw points. |

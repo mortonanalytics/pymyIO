@@ -434,15 +434,14 @@ app_ui = ui.page_navbar(
         ui.div(
             {"class": "container", "style": "max-width: 800px; padding-top: 2rem;"},
             ui.h2("Known gaps"),
-            ui.p("All chart types and transforms render against the live d3 engine. "
-                 "One pre-validation bug remains:"),
+            ui.p("All chart types and transforms render against the live d3 engine, "
+                 "with no pre-validation gaps remaining."),
             ui.div({"class": "deferred-card"},
-                ui.tags.b("Mean ± CI on rangeBar"),
-                ui.tags.span(" — pymyio required-mapping bug (PYMYIO-C05)"),
-                ui.p("rangeBar requires low_y/high_y at validation time, but the "
-                     "R-parity {x_var, y_var} call relies on the mean_ci transform "
-                     "to synthesize the band. Required-mapping check needs to be "
-                     "transform-aware.")),
+                ui.tags.b("Mean ± CI on rangeBar — resolved (PYMYIO-C05)"),
+                ui.p("The required-mapping check is now transform-aware: the "
+                     "R-parity {x_var, y_var} call validates against the mean_ci "
+                     "transform's synthesized low_y/high_y band. area likewise "
+                     "accepts an explicit band without a center y_var.")),
             ui.tags.a("Full roadmap →",
                 href="https://mortonanalytics.github.io/pymyIO/roadmap/",
                 target="_blank"),
