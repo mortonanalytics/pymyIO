@@ -66,6 +66,8 @@ FIXTURES = {
     "polynomial":       (_xy(),        {"x_var": "x", "y_var": "y"}, {"degree": 2}),
     "residuals":        (_xy(),        {"x_var": "x", "y_var": "y"}, None),
     "quantiles":        (_xy(),        {"x_var": "x", "y_var": "y"}, None),
+    "quantile_dots":    (_groups(),    {"x_var": "g", "y_var": "y"},
+                         {"source": "empirical", "n": 10, "threshold": 0.0}),
     "median":           (_xy(),        {"x_var": "x", "y_var": "y"}, None),
     "outliers":         (_xy(),        {"x_var": "x", "y_var": "y"}, None),
     "ci":               (_xy(),        {"x_var": "x", "y_var": "y"}, None),

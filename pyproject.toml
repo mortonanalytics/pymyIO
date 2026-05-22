@@ -81,6 +81,7 @@ exclude = [
 "vendor/myIO/inst/htmlwidgets/lib/d3.min.js"       = "pymyio/static/lib/d3.min.js"
 "vendor/myIO/inst/htmlwidgets/lib/d3-hexbin.js"    = "pymyio/static/lib/d3-hexbin.js"
 "vendor/myIO/inst/htmlwidgets/lib/d3-sankey.min.js" = "pymyio/static/lib/d3-sankey.min.js"
+"vendor/myIO/inst/myio-schema.json"                = "pymyio/myio-schema.json"
 
 # Sdist must include the submodule contents so wheels can be built from the
 # tarball alone (PyPI doesn't fetch git submodules).
@@ -88,6 +89,8 @@ exclude = [
 include = [
   "src/pymyio",
   "vendor/myIO/inst/htmlwidgets",
+  "vendor/myIO/inst/myio-schema.json",
+  "vendor/myIO/tests/fixtures/validate-conformance.json",
   "vendor/myIO/LICENSE",
   "tests",
   "examples",

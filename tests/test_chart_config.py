@@ -18,7 +18,7 @@ SAMPLE = [
 
 def test_default_config_shape():
     cfg = MyIO().to_config()
-    assert cfg["specVersion"] == 1
+    assert cfg["specVersion"] == 2
     assert cfg["layers"] == []
     assert cfg["layout"]["margin"] == {"top": 30, "bottom": 60, "left": 50, "right": 5}
     assert cfg["layout"]["suppressLegend"] is False

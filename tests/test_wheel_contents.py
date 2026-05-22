@@ -1,7 +1,7 @@
 """Freeze test for the Hatch wheel ``force-include`` block.
 
-The block materializes five assets from the vendored git submodule into
-``pymyio/static/`` in the built wheel. Removing or renaming an entry
+The block materializes engine assets and the generated schema from the
+vendored git submodule into the built wheel. Removing or renaming an entry
 breaks installs for every downstream user — catch that mechanically.
 
 Design doc reference: Slice 5; contract §"force-include block".
@@ -30,6 +30,7 @@ EXPECTED_FORCE_INCLUDE = {
     "vendor/myIO/inst/htmlwidgets/lib/d3.min.js": "pymyio/static/lib/d3.min.js",
     "vendor/myIO/inst/htmlwidgets/lib/d3-hexbin.js": "pymyio/static/lib/d3-hexbin.js",
     "vendor/myIO/inst/htmlwidgets/lib/d3-sankey.min.js": "pymyio/static/lib/d3-sankey.min.js",
+    "vendor/myIO/inst/myio-schema.json": "pymyio/myio-schema.json",
 }
 
 
@@ -47,7 +48,7 @@ def test_force_include_block_is_present(pyproject: dict):
     assert "force-include" in wheel
 
 
-def test_force_include_maps_all_five_frozen_assets(pyproject: dict):
+def test_force_include_maps_all_frozen_assets(pyproject: dict):
     actual = (
         pyproject["tool"]["hatch"]["build"]["targets"]["wheel"]["force-include"]
     )

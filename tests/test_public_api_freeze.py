@@ -26,6 +26,23 @@ _V_0_2_0_ADDITIONS = {
     "to_standalone_html",
 }
 
+_PR_50_ADDITIONS = {
+    "ERROR_CODES",
+    "load_schema",
+    "list_chart_types",
+    "get_chart_schema",
+    "validate_spec",
+    "list_functions",
+    "get_function_signature",
+    "validate_call",
+    "myio_list_chart_types",
+    "myio_chart_schema",
+    "myio_validate_spec",
+    "myio_list_functions",
+    "myio_function_signature",
+    "myio_validate_call",
+}
+
 
 def test_all_contains_every_v0_1_0_symbol():
     missing = _V_0_1_0 - set(pymyio.__all__)
@@ -41,7 +58,7 @@ def test_all_is_exactly_the_expected_set():
     # Explicit snapshot — if this assert fires, the PR added or removed a
     # public symbol; update _V_0_2_0_ADDITIONS (and consider whether a
     # deprecation cycle is needed).
-    assert set(pymyio.__all__) == _V_0_1_0 | _V_0_2_0_ADDITIONS
+    assert set(pymyio.__all__) == _V_0_1_0 | _V_0_2_0_ADDITIONS | _PR_50_ADDITIONS
 
 
 def test_version_string_is_well_formed():

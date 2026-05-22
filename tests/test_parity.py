@@ -37,7 +37,7 @@ def test_allowed_types_matches_r_canon():
         "sankey", "boxplot", "violin", "ridgeline", "rangeBar", "text",
         "regression", "bracket", "comparison", "qq", "lollipop", "dumbbell",
         "waffle", "beeswarm", "bump", "radar", "funnel", "parallel",
-        "survfit", "histogram_fit", "calendarHeatmap",
+        "survfit", "histogram_fit", "calendarHeatmap", "quantile_dots", "fan",
     }
     assert set(ALLOWED_TYPES) == expected
 
@@ -65,7 +65,7 @@ def test_transform_registry_completeness():
         "identity", "lm", "cumulative", "quantiles", "median", "outliers",
         "density", "mean", "summary", "loess", "polynomial", "smooth",
         "residuals", "ci", "mean_ci", "pairwise_test", "qq", "survfit",
-        "fit_distribution",
+        "fit_distribution", "quantile_dots",
     }
     assert set(REGISTRY.keys()) == expected
 
@@ -294,6 +294,51 @@ def test_histogram_fit_composite_emits_histogram_and_fit_line():
         {"value": 5, "_source_key": "row_5"},
     ]
     assert layers[1]["transformMeta"]["name"] == "fit_distribution"
+
+
+def test_quantile_dots_defaults_to_quantile_transform():
+    rows = (
+        [{"group": "A", "value": v} for v in [1, 2, 3, 4, 5]]
+        + [{"group": "B", "value": v} for v in [10, 20, 30, 40, 50]]
+    )
+    chart = MyIO(data=rows).add_layer(
+        type="quantile_dots",
+        label="dots",
+        mapping={"x_var": "group", "y_var": "value"},
+        options={"n": 4, "source": "empirical", "threshold": 3},
+    )
+    layer = chart.to_config()["layers"][0]
+    assert layer["type"] == "quantile_dots"
+    assert layer["transform"] == "quantile_dots"
+    assert layer["mapping"]["y_var"] == "value"
+    assert layer["mapping"]["quantile_rank"] == "quantile_rank"
+    assert layer["mapping"]["threshold_relationship"] == "threshold_relationship"
+    assert len(layer["data"]) == 8
+    assert layer["transformMeta"]["name"] == "quantile_dots"
+    assert layer["transformMeta"]["source"] == "empirical"
+
+
+def test_fan_composite_emits_area_bands():
+    rows = [
+        {"day": day, "value": day * 10 + draw}
+        for day in [1, 2, 3]
+        for draw in range(1, 13)
+    ]
+    chart = MyIO(data=rows).add_layer(
+        type="fan",
+        label="forecast fan",
+        mapping={"x_var": "day", "y_var": "value"},
+        options={"levels": [50, 80, 95]},
+    )
+    layers = chart.to_config()["layers"]
+    assert [layer["type"] for layer in layers] == ["area", "area", "area"]
+    assert [layer["_composite"] for layer in layers] == ["fan", "fan", "fan"]
+    assert [layer["options"]["interval_pct"] for layer in layers] == [95.0, 80.0, 50.0]
+    assert all(layer["options"]["boundaryStroke"] is True for layer in layers)
+    assert all(
+        layer["mapping"] == {"x_var": "x_var", "low_y": "low_y", "high_y": "high_y"}
+        for layer in layers
+    )
 
 
 # ---- setters ------------------------------------------------------------

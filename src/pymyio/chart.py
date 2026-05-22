@@ -31,7 +31,7 @@ ALLOWED_TYPES: List[str] = [
     "waffle", "beeswarm", "bump",
     "radar", "funnel", "parallel",
     "survfit", "histogram_fit",
-    "calendarHeatmap",
+    "calendarHeatmap", "quantile_dots", "fan",
 ]
 
 # Allowed (type, transform) combinations (matches R/util.R::VALID_COMBINATIONS).
@@ -67,6 +67,8 @@ VALID_COMBINATIONS: dict = {
     "survfit":         ("identity",),
     "histogram_fit":   ("identity",),
     "calendarHeatmap": ("identity",),
+    "quantile_dots":   ("identity", "quantile_dots"),
+    "fan":             ("identity",),
 }
 
 # Compatibility groups for layer co-existence (matches R/util.R::COMPATIBILITY_GROUPS
@@ -79,26 +81,35 @@ COMPATIBILITY_GROUPS: dict = {
     "sankey": "standalone-flow",
     "boxplot": "axes-categorical", "violin": "axes-categorical",
     "ridgeline": "axes-binned", "rangeBar": "axes-continuous",
-    "hexbin": "axes-hex", "treemap": "standalone-flow", "donut": "standalone-radial",
-    "gauge": "standalone-radial", "text": "axes-continuous",
+    "hexbin": "axes-hex", "treemap": "standalone-treemap",
+    "donut": "standalone-donut", "gauge": "standalone-gauge",
+    "text": "axes-continuous",
     "regression": "axes-continuous", "bracket": "axes-continuous",
-    "comparison": "axes-continuous", "qq": "axes-continuous",
+    "comparison": "axes-categorical", "qq": "axes-continuous",
     "lollipop": "axes-categorical", "dumbbell": "axes-categorical",
-    "waffle": "standalone-flow", "beeswarm": "axes-categorical",
-    "bump": "axes-continuous", "radar": "standalone-radial",
-    "funnel": "standalone-flow", "parallel": "standalone-flow",
+    "waffle": "standalone-waffle", "beeswarm": "axes-continuous",
+    "bump": "axes-continuous", "radar": "standalone-radar",
+    "funnel": "standalone-funnel", "parallel": "standalone-parallel",
     "survfit": "axes-continuous", "histogram_fit": "axes-binned",
-    "calendarHeatmap": "axes-matrix",
+    "calendarHeatmap": "standalone-calendar",
+    "quantile_dots": "axes-categorical", "fan": "axes-continuous",
 }
 
 GROUP_MATRIX: dict = {
-    "axes-continuous":  ("axes-continuous",),
-    "axes-categorical": ("axes-categorical",),
-    "axes-binned":      ("axes-binned",),
+    "axes-continuous":  ("axes-continuous", "axes-categorical", "axes-binned"),
+    "axes-categorical": ("axes-continuous", "axes-categorical"),
+    "axes-binned":      ("axes-continuous", "axes-binned"),
     "axes-matrix":      ("axes-matrix",),
     "axes-hex":         ("axes-hex",),
     "standalone-flow":  ("standalone-flow",),
-    "standalone-radial": ("standalone-radial",),
+    "standalone-treemap": ("standalone-treemap",),
+    "standalone-donut": ("standalone-donut",),
+    "standalone-gauge": ("standalone-gauge",),
+    "standalone-waffle": ("standalone-waffle",),
+    "standalone-radar": ("standalone-radar",),
+    "standalone-funnel": ("standalone-funnel",),
+    "standalone-parallel": ("standalone-parallel",),
+    "standalone-calendar": ("standalone-calendar",),
 }
 
 _REQUIRED_MAPPING: dict = {
@@ -136,12 +147,14 @@ _REQUIRED_MAPPING: dict = {
     "survfit":         ("time", "status"),
     "histogram_fit":   ("value",),
     "calendarHeatmap": ("date", "value"),
+    "quantile_dots":   ("x_var", "y_var"),
+    "fan":             ("x_var", "y_var"),
 }
 
 # Composite layer types — each expands into multiple primitive layers.
 COMPOSITE_TYPES: Tuple[str, ...] = (
     "boxplot", "violin", "ridgeline", "regression",
-    "comparison", "qq", "survfit", "histogram_fit",
+    "comparison", "qq", "survfit", "histogram_fit", "fan",
 )
 
 POSITIONAL_CATEGORY_COMPOSITES = {"boxplot", "violin", "comparison"}
@@ -156,6 +169,10 @@ TRANSFORM_AUTO_MAPPING: dict = {
     "survfit": {
         "x_var": "time", "y_var": "surv",
         "low_y": "ci_lower", "high_y": "ci_upper",
+    },
+    "quantile_dots": {
+        "quantile_rank": "quantile_rank",
+        "threshold_relationship": "threshold_relationship",
     },
 }
 
@@ -546,6 +563,117 @@ def _expand_qq(records, mapping, label, color, options):
     return _qq_for(records, label, base_color)
 
 
+def _format_level_suffix(level: float) -> str:
+    return ("%s" % level).rstrip("0").rstrip(".")
+
+
+def _expand_fan(records, mapping, label, color, options):
+    """Port of R/composite_fan.R - interval bands as primitive area layers."""
+    from .transforms import _quantile
+
+    raw_levels = options.get("levels", [50, 80, 95])
+    if not isinstance(raw_levels, (list, tuple)) or not raw_levels:
+        raise ValueError("composite_fan(): `levels` must be numeric percentages between 0 and 100.")
+    levels = sorted({float(v) for v in raw_levels}, reverse=True)
+    if any(math.isnan(v) or v <= 0 or v >= 100 for v in levels):
+        raise ValueError("composite_fan(): `levels` must be numeric percentages between 0 and 100.")
+
+    interval = options.get("interval", "prediction")
+    if interval not in {"prediction", "confidence"}:
+        raise ValueError("composite_fan(): `interval` must be 'prediction' or 'confidence'.")
+
+    min_obs = int(options.get("min_obs", 10))
+    if min_obs < 1:
+        raise ValueError("composite_fan(): `min_obs` must be a positive integer.")
+
+    x_col, y_col = mapping["x_var"], mapping["y_var"]
+    base_color = _base_color(color)
+
+    if options.get("precomputed") is True:
+        layers_data = []
+        for level in levels:
+            suffix = _format_level_suffix(level)
+            low_col = f"low_{suffix}"
+            high_col = f"high_{suffix}"
+            missing = [col for col in (low_col, high_col) if col not in records[0]]
+            if missing:
+                raise ValueError(
+                    "composite_fan(): precomputed input is missing columns: "
+                    f"{', '.join(missing)}."
+                )
+            layers_data.append([
+                {"x_var": row.get(x_col), "low_y": row.get(low_col), "high_y": row.get(high_col)}
+                for row in records
+            ])
+    else:
+        groups: dict = {}
+        order: list = []
+        for row in records:
+            key = row.get(x_col)
+            if key not in groups:
+                groups[key] = []
+                order.append(key)
+            value = row.get(y_col)
+            if value is None or (isinstance(value, float) and math.isnan(value)):
+                continue
+            groups[key].append(float(value))
+
+        insufficient = [key for key in order if len(groups[key]) < min_obs]
+        if insufficient:
+            raise ValueError(
+                "composite_fan(): each x_var group must have at least "
+                f"min_obs={min_obs} observations; insufficient groups: "
+                f"{', '.join(str(v) for v in insufficient)}."
+            )
+
+        layers_data = []
+        for level in levels:
+            alpha = (1 - level / 100) / 2
+            layers_data.append([
+                {
+                    "x_var": key,
+                    "low_y": _quantile(groups[key], alpha),
+                    "high_y": _quantile(groups[key], 1 - alpha),
+                }
+                for key in order
+            ])
+
+    layers = []
+    level_count = len(levels)
+    for index, (level, rows) in enumerate(zip(levels, layers_data), start=1):
+        suffix = _format_level_suffix(level)
+        interval_label = f"{suffix}% interval"
+        band_rows = []
+        for row_index, row in enumerate(rows, start=1):
+            band_rows.append({
+                **row,
+                "density_label": interval_label,
+                "interval_pct": level,
+                "intervalType": interval,
+                "_source_key": f"fan_{suffix}_{row_index}",
+            })
+        opacity = 0.35 if level_count == 1 else 0.18 + (level_count - index) * (
+            0.22 / max(level_count - 1, 1)
+        )
+        layers.append({
+            "type": "area",
+            "label": f"{label} - {interval_label}",
+            "data": band_rows,
+            "color": base_color,
+            "transform": "identity",
+            "options": {
+                "interval_pct": level,
+                "density_label": interval_label,
+                "intervalType": interval,
+                "areaOpacity": opacity,
+                "boundaryStroke": True,
+            },
+            "role": f"fan_{suffix}",
+            "mapping": {"x_var": "x_var", "low_y": "low_y", "high_y": "high_y"},
+        })
+    return layers
+
+
 def _expand_composite(type: str, records: List[dict], mapping: Mapping[str, str],
                       label: str, color: Any, options: Mapping[str, Any]) -> List[dict]:
     """Expand a composite layer type into a list of primitive sub-layer specs."""
@@ -587,6 +715,8 @@ def _expand_composite(type: str, records: List[dict], mapping: Mapping[str, str]
              "data": records, "mapping": mapping, "color": color,
              "transform": "fit_distribution", "options": options, "role": "fit"},
         ]
+    if type == "fan":
+        return _expand_fan(records, mapping, label, color, options)
     raise ValueError(f"Unknown composite type '{type}'.")
 
 
@@ -666,7 +796,7 @@ class MyIO:
         _validate_title(title, caller="myIO")
 
         self.config: dict = {
-            "specVersion": 1,
+            "specVersion": 2,
             "title": title,
             "layers": [],
             "layout": {
@@ -744,6 +874,15 @@ class MyIO:
                 f"Layer label '{label}' already exists. Each layer must have a "
                 "unique label."
             )
+        if type == "quantile_dots" and "group" in mapping:
+            raise ValueError(
+                "type 'quantile_dots' uses `x_var` as the distribution group; "
+                "do not supply a separate `group` mapping."
+            )
+        if type == "quantile_dots" and transform == "identity":
+            transform = "quantile_dots"
+        if type == "waterfall" and transform == "identity":
+            transform = "cumulative"
 
         # Inject transform-supplied mappings (e.g. mean_ci -> low_y/high_y)
         # before validating, so transform-derived fields satisfy the contract.
@@ -774,9 +913,6 @@ class MyIO:
                 )
 
         self._check_layer_compatibility(type)
-
-        if type == "waterfall" and transform == "identity":
-            transform = "cumulative"
 
         if type not in COMPOSITE_TYPES:
             allowed = VALID_COMBINATIONS.get(type, ("identity",))
@@ -821,7 +957,11 @@ class MyIO:
             )
         else:
             layer_mapping = _inject_transform_mapping(transform, mapping)
-            tx_records, tx_meta = get_transform(transform)(records, layer_mapping, options)
+            transform_mapping = dict(layer_mapping)
+            if transform == "quantile_dots":
+                layer_mapping = dict(layer_mapping)
+                layer_mapping["y_var"] = "value"
+            tx_records, tx_meta = get_transform(transform)(records, transform_mapping, options)
             self.config["layers"].append(self._build_layer(
                 layer_type=type, label=label, data=tx_records, mapping=layer_mapping,
                 color=color, transform=transform, options=options,

@@ -31,6 +31,7 @@ SMOOTH_METHODS = ("sma", "ema")
 TEST_METHODS = ("t.test", "wilcox.test")
 P_ADJUST_METHODS = ("none", "bonferroni", "holm", "bh")  # alias "BH" -> "bh"
 DISTRIBUTIONS = ("normal", "gamma", "lognormal", "exponential")
+QUANTILE_DOT_SOURCES = ("bootstrap", "posterior", "ensemble", "empirical")
 
 
 def _meta(name: str, **details: Any) -> dict:
@@ -223,6 +224,72 @@ def transform_quantiles(records: Records, mapping: Mapping[str, str], options) -
             "n": len(vals),
         })
     return out, _meta("quantiles")
+
+
+def transform_quantile_dots(records: Records, mapping: Mapping[str, str], options) -> TransformResult:
+    """Per-x quantile dot summary for uncertainty distributions."""
+    opts = options or {}
+    source = opts.get("source")
+    if source not in QUANTILE_DOT_SOURCES:
+        quoted = ", ".join(f"'{value}'" for value in QUANTILE_DOT_SOURCES)
+        raise ValueError(
+            "transform_quantile_dots(): `source` is required; one of "
+            f"{quoted}."
+        )
+
+    n = int(opts.get("n", 20))
+    if n < 1:
+        raise ValueError("transform_quantile_dots(): `n` must be a positive integer.")
+    if n > 50:
+        warnings.warn(
+            "quantile_dots: n > 50 degrades legibility; consider n <= 50.",
+            UserWarning, stacklevel=2,
+        )
+
+    threshold = opts.get("threshold")
+    if threshold is not None:
+        threshold = float(threshold)
+
+    x_col, y_col = mapping["x_var"], mapping["y_var"]
+    groups: dict = {}
+    source_keys: dict = {}
+    order: list = []
+    for index, row in enumerate(records, start=1):
+        key = row.get(x_col)
+        if key not in groups:
+            groups[key] = []
+            source_keys[key] = []
+            order.append(key)
+        value = row.get(y_col)
+        if value is not None and not (isinstance(value, float) and math.isnan(value)):
+            groups[key].append(float(value))
+        source_keys[key].append(str(row.get("_source_key", index)))
+
+    probs = [(i + 0.5) / n for i in range(n)]
+    out = []
+    for key in order:
+        values = groups[key]
+        for rank, prob in enumerate(probs, start=1):
+            value = _quantile(values, prob)
+            relationship = None
+            if threshold is not None:
+                relationship = "below" if value < threshold else "above"
+            out.append({
+                x_col: key,
+                "value": value,
+                "quantile_rank": rank,
+                "threshold_relationship": relationship,
+                "_source_key": f"quantile_dot_{_safe_name(key)}_{rank}",
+            })
+
+    return out, _meta(
+        "quantile_dots",
+        source=source,
+        n=n,
+        threshold=threshold,
+        sourceKeys=[source_keys[key] for key in order],
+        derivedFrom="input_rows",
+    )
 
 
 def transform_median(records: Records, mapping: Mapping[str, str], options) -> TransformResult:
@@ -899,6 +966,7 @@ REGISTRY: dict = {
     "polynomial": transform_polynomial,
     "residuals": transform_residuals,
     "quantiles": transform_quantiles,
+    "quantile_dots": transform_quantile_dots,
     "median": transform_median,
     "outliers": transform_outliers,
     "ci": transform_ci,
@@ -971,3 +1039,11 @@ def _normal_quantile(p: float) -> float:
     if not 0.0 < p < 1.0:
         raise ValueError("p must be in (0, 1)")
     return float(sst.norm.ppf(p))
+
+
+def _safe_name(value: Any) -> str:
+    out = []
+    for char in str(value):
+        out.append(char if char.isalnum() or char in "._" else ".")
+    result = "".join(out).strip(".")
+    return result or "X"
