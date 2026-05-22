@@ -6,6 +6,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Uncertainty visualizations** (mirrors [myIO#50](https://github.com/mortonanalytics/myIO/pull/50)):
+  `quantile_dots` — dotplot of a predictive distribution
+  (`transform="quantile_dots"`, `source` one of
+  `bootstrap`/`posterior`/`ensemble`/`empirical`) — and `fan`, a composite
+  forecast fan of nested prediction-interval bands.
+- **LLM tool-calling surface** in `pymyio.tools` (mirrors myIO `R/llm_tools.R`):
+  `load_schema`, `list_chart_types`, `get_chart_schema`, `validate_spec`,
+  `list_functions`, `get_function_signature`, `validate_call` — plus the
+  `myio_*` R-parity aliases and `ERROR_CODES`. Backed by the generated
+  `myio-schema.json` (force-included into the wheel at
+  `pymyio/myio-schema.json`); the validators are checked against myIO's
+  shared cross-language conformance corpus.
+
 ### Fixed
 
 - **PYMYIO-C05** — the required-mapping check now runs against the
@@ -13,15 +28,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   pre-aggregation. `area` also accepts an explicit band (`low_y`/`high_y`)
   with no center `y_var`; simple `area` (`x_var`/`y_var`) is unchanged.
 
-### Engine (vendored bundle bump to myIO `c4aafa0` on `main`)
+### Engine (vendored bundle bump to myIO `d54d6c5` on `main`)
 
-- Consumes [myIO#49](https://github.com/mortonanalytics/myIO/pull/49)
+- [myIO#49](https://github.com/mortonanalytics/myIO/pull/49)
   (`[engine-additive]`): distribution charts (boxplot/violin/comparison)
   render categorical group labels via the new `config.axes.xTickLabels`
   map, axis tick formats default to the engine default (empty) instead of
   SI (`"s"`), and comparison significance brackets are no longer dropped.
   `set_axis_format` arguments default to `None` so a label-only call
   preserves previously set formats.
+- [myIO#50](https://github.com/mortonanalytics/myIO/pull/50)
+  (`[engine-additive]`): uncertainty-visualization renderers
+  (`quantile_dots`, `fan`), the LLM tool-calling JSON schema
+  (`myio-schema.json`), and an `AreaRenderer` `boundaryStroke` default fix.
+  Config `specVersion` is now `2`, matching R `myIO()`.
 
 ### CI
 

@@ -26,6 +26,13 @@ is a valid value for `MyIO.add_layer(type=...)`.
 | `ridgeline` | `x_var`, `y_var`, `group` | Composite: stacked density areas with `overlap` factor. |
 | `comparison` | `x_var`, `y_var` | :material-alert: uses `pairwise_test` — see [Roadmap](roadmap.md). |
 
+## Uncertainty
+
+| Type | Required mapping | Notes |
+|---|---|---|
+| `quantile_dots` | `x_var`, `y_var` | Quantile dotplot of a predictive distribution. `transform="quantile_dots"` with `options={"source": ...}` — one of `bootstrap`, `posterior`, `ensemble`, `empirical`; `n` sets the dot count. |
+| `fan` | `x_var`, `y_var`, `low_y`, `high_y` | Composite forecast fan: nested prediction-interval bands. Requires ≥ `min_obs` (default 10) observations per `x_var` group. |
+
 ## Specialized
 
 | Type | Required mapping | Notes |

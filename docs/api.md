@@ -61,6 +61,33 @@ the same engine renders both.
 |---|---|
 | `myIO_last_error()` | `MyIOWidget.last_error` traitlet |
 
+## LLM tool calling
+
+Schema-backed helpers for letting an LLM propose and validate myIO specs.
+Both the Pythonic names and the `myio_*` R-parity aliases are exported from
+`pymyio`.
+
+| R export | Python equivalent |
+|---|---|
+| `myio_list_chart_types()` | `pymyio.list_chart_types()` (alias `myio_list_chart_types`) |
+| `myio_chart_schema()` | `pymyio.get_chart_schema()` (alias `myio_chart_schema`) |
+| `myio_validate_spec()` | `pymyio.validate_spec()` (alias `myio_validate_spec`) |
+| `myio_list_functions()` | `pymyio.list_functions()` (alias `myio_list_functions`) |
+| `myio_function_signature()` | `pymyio.get_function_signature()` (alias `myio_function_signature`) |
+| `myio_validate_call()` | `pymyio.validate_call()` (alias `myio_validate_call`) |
+| `myio_load_schema()` | `pymyio.load_schema()` |
+
+Error objects use stable `code` values (`pymyio.ERROR_CODES`) shared with the
+R and JS implementations.
+
+These helpers run **in-process** — call them directly, or wrap them as tools
+in your own agent loop. If you instead want a ready-to-run **MCP server** for
+any MCP-capable agent, the myIO sibling already ships one in JavaScript:
+[`@mortonanalytics/myio-mcp`](https://github.com/mortonanalytics/myIO/tree/main/mcp)
+(Node, stdio transport, same six tools). It is driven by the same generated
+`myio-schema.json`, so R, JS, and Python validate identically. See the
+[myIO LLM tool-calling guide](https://mortonanalytics.github.io/myIO/articles/llm-tool-calling.html).
+
 ## Data containers accepted
 
 Both `MyIO(data=…)` and `add_layer(data=…)` accept:
