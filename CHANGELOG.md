@@ -4,7 +4,7 @@ All notable changes to pymyIO are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.1.2] — 2026-05-21
 
 ### Added
 
@@ -177,6 +177,6 @@ shared with the R package.
   Workaround: pre-aggregate and pass `low_y`/`high_y` directly. Tracked
   as PYMYIO-C05.
 
-[Unreleased]: https://github.com/mortonanalytics/pymyIO/compare/v0.1.1...HEAD
+[0.1.2]: https://github.com/mortonanalytics/pymyIO/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/mortonanalytics/pymyIO/releases/tag/v0.1.1
 [0.1.0]: https://github.com/mortonanalytics/pymyIO/releases/tag/v0.1.0
