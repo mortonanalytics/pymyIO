@@ -1,0 +1,38 @@
+name: tests
+
+# Runs the pytest suite on PRs and main. This is the gate that asserts
+# schema parity with upstream myIO (drift = 0): test_tools.py loads the
+# force-included schema and checks it byte-matches the canonical
+# vendor/myIO contract, every chart type validates its minimal spec, and
+# the issue #52 array-normalization holds. Browser-dependent tests skip
+# automatically when Playwright is absent.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout with submodule
+        uses: actions/checkout@v6
+        with:
+          submodules: true
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install package and test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Run test suite
+        run: pytest -q
