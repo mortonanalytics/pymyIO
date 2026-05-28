@@ -4,6 +4,38 @@ All notable changes to pymyIO are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] — 2026-05-28
+
+### Changed
+
+- **Engine bump to myIO 1.1.0** (mirrors
+  [myIO#53](https://github.com/mortonanalytics/myIO/pull/53)): the vendored d3
+  engine is re-pinned to the #53 merge commit, bringing the bundled engine
+  current (accessibility work, latest renderers) alongside the validator fix
+  below. pymyIO ships the engine and the generated `myio-schema.json`
+  byte-exact from this pin.
+
+### Fixed
+
+- **Schema #52 fix** — every single-element list field in `myio-schema.json`
+  (`required_mappings`, `numeric_fields`, `valid_transforms`, and
+  `function_signatures` values) is now a JSON array instead of a scalar string.
+  Previously a single-mapping chart type (e.g. `histogram` → `"value"`) could
+  cause a schema-reading validator to iterate the string character-by-character
+  and emit one bogus `MISSING_MAPPING` per letter. pymyIO's validators were
+  already defended via `_as_list`; the array-normalized schema removes the
+  hazard at the source.
+
+### Internal
+
+- New parity tests mirroring upstream: a per-type minimal-spec regression
+  (every chart type validates `valid=true` from its schema `required_mappings`),
+  an array-normalization lock, and a schema-drift gate asserting the loaded
+  schema byte-matches the canonical upstream `inst`/`mcp` contract.
+- Added a `tests` GitHub Actions workflow that runs the pytest suite (with the
+  myIO engine submodule checked out) on pull requests and `main` — the repo
+  previously had no test-running CI.
+
 ## [0.1.2] — 2026-05-21
 
 ### Added
