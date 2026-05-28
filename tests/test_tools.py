@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from pymyio import (
     ALLOWED_TYPES,
     COMPATIBILITY_GROUPS,
@@ -18,14 +20,15 @@ from pymyio import (
 )
 
 
-CONFORMANCE = (
-    Path(__file__).resolve().parent.parent
-    / "vendor"
-    / "myIO"
-    / "tests"
-    / "fixtures"
-    / "validate-conformance.json"
-)
+_VENDOR = Path(__file__).resolve().parent.parent / "vendor" / "myIO"
+CONFORMANCE = _VENDOR / "tests" / "fixtures" / "validate-conformance.json"
+SCHEMA_INST = _VENDOR / "inst" / "myio-schema.json"
+SCHEMA_MCP = _VENDOR / "mcp" / "myio-schema.json"
+
+# List-typed schema fields that issue #52 collapsed to scalar strings for
+# single-element lists. Iterating a scalar string yields one bogus error per
+# character, so each of these must stay a JSON array.
+_LIST_FIELDS = ("required_mappings", "numeric_fields", "valid_transforms")
 
 
 def _as_tuple(value):
@@ -83,3 +86,61 @@ def test_validate_spec_optional_columns_argument_overrides_spec_columns():
         columns={"wt": "numeric", "mpg": "numeric"},
     )
     assert result == {"valid": True, "errors": []}
+
+
+@pytest.mark.parametrize("chart_type", list_chart_types())
+def test_every_chart_type_accepts_its_minimal_spec(chart_type):
+    """Mirror upstream tests/js/mcp-validate.test.js: a minimal valid spec for
+    every chart type validates cleanly. Guards issue #52 — a required_mappings
+    field serialized as a scalar string would split into characters and report
+    one bogus MISSING_MAPPING per letter."""
+    schema = get_chart_schema(chart_type)
+    assert all(isinstance(f, str) for f in schema["required_mappings"])
+    mapping = {field: field for field in schema["required_mappings"]}
+    transforms = schema["valid_transforms"]
+    transform = transforms[0] if transforms else "identity"
+
+    result = validate_spec({"type": chart_type, "mapping": mapping, "transform": transform})
+
+    assert result == {"valid": True, "errors": []}
+
+
+def test_issue_52_histogram_minimal_does_not_split_string():
+    result = validate_spec(
+        {"type": "histogram", "mapping": {"value": "mag"}, "transform": "identity"}
+    )
+    assert result == {"valid": True, "errors": []}
+
+
+def test_issue_52_genuinely_missing_single_mapping_reports_one_error():
+    result = validate_spec({"type": "histogram", "mapping": {}, "transform": "identity"})
+    assert result["valid"] is False
+    missing = [e for e in result["errors"] if e["code"] == "MISSING_MAPPING"]
+    assert len(missing) == 1
+    assert missing[0]["field"] == "value"
+
+
+def test_schema_list_fields_are_arrays_not_scalars():
+    """Lock the issue #52 fix: every list-typed field is a JSON array for every
+    chart type — never a scalar string, even for single-element lists."""
+    schema = load_schema()
+    for chart_type, type_schema in schema["types"].items():
+        for field in _LIST_FIELDS:
+            if field in type_schema:
+                assert isinstance(type_schema[field], list), (
+                    f"{chart_type}.{field} must be a JSON array, got "
+                    f"{type(type_schema[field]).__name__}"
+                )
+                assert all(isinstance(v, str) for v in type_schema[field])
+    for fn, args in schema["function_signatures"].items():
+        assert isinstance(args, list), f"function_signatures.{fn} must be a JSON array"
+
+
+def test_schema_byte_matches_canonical_mcp_copy():
+    """Schema drift gate: pymyIO loads the canonical contract and the two
+    canonical upstream copies (inst/ and mcp/) are byte-identical, so a
+    regeneration that updates only one surface fails CI."""
+    inst_bytes = SCHEMA_INST.read_bytes()
+    mcp_bytes = SCHEMA_MCP.read_bytes()
+    assert inst_bytes == mcp_bytes, "inst/ and mcp/ schema copies have drifted"
+    assert load_schema() == json.loads(inst_bytes.decode("utf-8"))
