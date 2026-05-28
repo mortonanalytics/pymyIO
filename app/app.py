@@ -819,7 +819,6 @@ def server(input, output, session):
             .add_layer(type="boxplot", color="#4E79A7", label="Sepal Length",
                        data=iris, mapping={"x_var": "Species", "y_var": "Sepal.Length"},
                        options={"showOutliers": True})
-            .define_categorical_axis(x_axis=True)
             .set_axis_format(x_label="Species", y_label="Sepal Length")
             .render()
         )
@@ -831,8 +830,7 @@ def server(input, output, session):
             .add_layer(type="violin", color=OKABE_ITO[:3], label="Sepal Length",
                        data=iris, mapping={"x_var": "Species", "y_var": "Sepal.Length"},
                        options={"showBox": True, "showMedian": True, "showPoints": False})
-            .set_axis_format(x_label="Species (1=setosa, 2=versicolor, 3=virginica)",
-                             y_label="Sepal Length")
+            .set_axis_format(x_label="Species", y_label="Sepal Length")
             .render()
         )
 
