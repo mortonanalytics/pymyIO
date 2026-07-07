@@ -11,7 +11,7 @@ paths:
 
 # Path 2 — Credibility Moat (pymyIO)
 
-pymyIO is the Python sibling of myIO, part of Morton Analytics' OSS credibility layer underneath the selected growth path (Path 2 — Modular Infrastructure Risk Intelligence). Full plan: `../morton-analytics-web/md/strategy/path-2-90day-plan.md`.
+pymyIO is the Python sibling of myIO, part of Morton Analytics' OSS credibility layer underneath the selected growth path (Path 2 — Modular Infrastructure Risk Intelligence). Full plan: `../morton-command-center/strategy/path-2-90day-plan.md`.
 
 ## Role in Path 2
 
@@ -22,15 +22,15 @@ pymyIO is **not a revenue product**. It's a credibility moat that compounds Path
 3. **SBIR narrative asset** — Innovation + Key Personnel + Commercialization sections cite pymyIO alongside myIO.
 4. **Federal market reach.** The federal data analytics market is shifting from R to Python. Holding both languages doubles the addressable surface for the credibility moat.
 
-## Current state (2026-05-12)
+## Current state (2026-07-07)
 
-- v0.1.0 live on PyPI as of 2026-05-05
-- 34 chart types, 19 statistical transforms, full feature parity target with myIO 1.2.0 surface
+- v0.2.0 (2026-05-28): engine re-pinned to myIO 1.1.0, schema lock, pytest CI
+- 34 chart types, 19 statistical transforms; myIO is now at 1.2.0 — parity with its surface is the open target
 - Gallery at pymyio.morton-analytics.com
 
 ## Maintenance cadence (Path 2 expectation)
 
-- Track myIO releases — when myIO ships v1.2.0, pymyIO ships v0.2.0 with matching surface
+- Track myIO releases — each myIO release gets a matching pymyIO release with the same surface (myIO 1.2.0 is currently unmatched)
 - Maintain feature parity with myIO sibling — drift between R and Python kills the dual-language story
 - Documentation site stays current (mkdocs)
 - Examples and gallery demonstrate real Path 2 use cases when feasible
