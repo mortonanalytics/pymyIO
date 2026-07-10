@@ -110,3 +110,7 @@ commit in myIO first, then submodule bump + Python-side commit here.
 
 If unsure, stop and ask — a silent edit through the symlink is the
 single most likely way to corrupt this setup.
+
+## Scheduled engine-sync boundary
+
+Automation accepts one issue only when `backlog-ready` was applied by Ryan, `main` is not red, no `automation-pr` is open, and the work occurs in an isolated worktree. The issue must name a valid pushed myIO commit. Verify compatibility, generated bundle state, and documentation, open one PR, and stop before version bump, merge, release, publication, or CRAN submission.
