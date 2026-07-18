@@ -13,4 +13,5 @@ dist/
 site/
 src/pymyio/_version.py
 
-.codex/
+.codex/handoffs/
+.codex/session-handoff.md
