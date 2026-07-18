@@ -13,3 +13,4 @@ dist/
 site/
 src/pymyio/_version.py
 
+.codex/
