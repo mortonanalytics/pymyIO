@@ -80,6 +80,8 @@ FIXTURES = {
     "survfit":          (_survival(),  {"time": "t", "status": "s"}, None),
     "fit_distribution": (_values(),    {"value": "v"}, None),
     "pairwise_test":    (_groups(),    {"x_var": "g", "y_var": "y"}, None),
+    "lttb":             (_xy(),        {"x_var": "x", "y_var": "y"},
+                         {"threshold": 10}),
 }
 
 

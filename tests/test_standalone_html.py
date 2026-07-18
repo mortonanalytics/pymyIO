@@ -220,8 +220,9 @@ def test_closing_script_tag_in_config_value_is_escaped():
 
 
 def test_inline_size_warning_triggers_when_config_is_huge():
-    big = [{"v": "x" * 4096} for _ in range(600)]  # data alone ~2.4 MB; pushes
-    # total inline HTML (engine + d3 + payload) past the 4 MB soft ceiling.
+    big = [{"v": "x" * 4096} for _ in range(1200)]  # data alone ~4.8 MB — past
+    # the 4 MB soft ceiling regardless of engine bundle size (it minifies over
+    # time; don't rely on it for padding).
     chart = MyIO(data=big).add_layer(
         type="text",
         label="big",

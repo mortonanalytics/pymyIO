@@ -36,7 +36,7 @@ ALLOWED_TYPES: List[str] = [
 
 # Allowed (type, transform) combinations (matches R/util.R::VALID_COMBINATIONS).
 VALID_COMBINATIONS: dict = {
-    "line":            ("identity", "lm", "loess", "polynomial", "smooth"),
+    "line":            ("identity", "lm", "loess", "polynomial", "smooth", "lttb"),
     "point":           ("identity", "mean", "summary", "residuals"),
     "area":            ("identity", "ci"),
     "bar":             ("identity", "mean", "summary"),

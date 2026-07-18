@@ -20,7 +20,7 @@ drift.
 - **Live gallery:** [https://pymyio.morton-analytics.com/](https://pymyio.morton-analytics.com/) (Shiny for Python, source in [`app/app.py`](app/app.py))
 
 > Status: alpha (0.1.0). API is settled and matches R's `setMargin`/`setBrush`/
-> etc. surface. All 19 registry transforms are implemented, including
+> etc. surface. All 20 registry transforms are implemented, including
 > `loess`, `smooth`, `density`, `survfit`, `fit_distribution`, and
 > `pairwise_test` (scipy-backed, Python-native — numeric output may differ
 > from the R package's `stats`-based versions).

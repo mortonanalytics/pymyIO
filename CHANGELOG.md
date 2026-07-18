@@ -4,6 +4,28 @@ All notable changes to pymyIO are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **`lttb` transform for line layers** (parity with
+  [myIO#80](https://github.com/mortonanalytics/myIO/pull/80)):
+  Largest-Triangle-Three-Buckets downsampling reduces large line series to at
+  most `options={"threshold": N}` points (default 2000, minimum 3), always
+  keeping the first and last point. Opt-in via
+  `add_layer(type="line", transform="lttb")`; requires non-missing numeric
+  x/y. Registry is now 20 transforms.
+
+### Changed
+
+- **Engine bump to myIO 1.2.0-dev** (`647062f` → `1dbc008`, 64 upstream
+  commits): minified production bundle (#73), single legend surface with
+  container-driven adaptive layout (#86), `myIOProxy()` partial-update API for
+  Shiny (#82), public `setTransition()` easing/stagger API (#76), export
+  double-legend fix (#64), and native base64 Arrow IPC decode (#75). All
+  changes are engine-additive; the only schema delta is `lttb` in
+  `line.valid_transforms`, matched by the Python transform above.
+
 ## [0.2.0] — 2026-05-28
 
 ### Changed

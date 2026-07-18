@@ -6,7 +6,7 @@ and ``meta`` is the corresponding ``transformMeta`` block the JS engine reads.
 
 Statistical transforms (loess, smooth, density, survfit, fit_distribution,
 pairwise_test) are implemented Python-natively on numpy + scipy; numeric
-output is not guaranteed to match R's ``stats`` package. All 19 registry
+output is not guaranteed to match R's ``stats`` package. All 20 registry
 entries are live — no stubs.
 """
 
@@ -955,6 +955,81 @@ def transform_pairwise_test(records: Records, mapping: Mapping[str, str], option
     return out, _meta("pairwise_test", sourceKeys=None, derivedFrom="input_rows")
 
 
+def transform_lttb(records: Records, mapping: Mapping[str, str], options) -> TransformResult:
+    """Largest-Triangle-Three-Buckets downsampling for line layers.
+
+    Reduces the series to at most ``options['threshold']`` rows (default 2000),
+    always keeping the first and last point. Mirrors R's transform_lttb: runs
+    on the in-memory path, independent of any SQL-side LTTB.
+    """
+    opts = options or {}
+    threshold = opts.get("threshold", 2000)
+    if isinstance(threshold, bool) or not isinstance(threshold, (int, float)) \
+            or math.isnan(threshold) or threshold < 3:
+        raise ValueError(
+            "transform_lttb(): `threshold` must be a single number >= 3."
+        )
+    threshold = int(math.floor(threshold))
+
+    x_col, y_col = mapping["x_var"], mapping["y_var"]
+    xs: List[float] = []
+    ys: List[float] = []
+    for row in records:
+        for col, acc in ((x_col, xs), (y_col, ys)):
+            v = row.get(col)
+            try:
+                fv = float(v)
+            except (TypeError, ValueError):
+                fv = math.nan
+            if math.isnan(fv):
+                raise ValueError(
+                    "transform_lttb(): requires non-NA numeric x and y values. "
+                    "Remove or impute missing values before downsampling."
+                )
+            acc.append(fv)
+
+    keep = _lttb_select(xs, ys, threshold)
+    return [records[i] for i in keep], _meta("lttb", derivedFrom="input_rows")
+
+
+def _lttb_select(xs: List[float], ys: List[float], threshold: int) -> List[int]:
+    """Indices (sorted, first/last always included) selected by LTTB."""
+    n = len(xs)
+    if n == 0:
+        return []
+    if threshold >= n or threshold < 3:
+        return list(range(n))
+
+    x = np.asarray(xs, dtype=float)
+    y = np.asarray(ys, dtype=float)
+    sampled = [0]
+    a = 0
+    bucket_size = (n - 2) / (threshold - 2)
+
+    for i in range(1, threshold - 1):
+        avg_start = int(math.floor(i * bucket_size)) + 1
+        avg_end = min(int(math.floor((i + 1) * bucket_size)) + 1, n - 1)
+        avg_x = float(x[avg_start:avg_end + 1].mean())
+        avg_y = float(y[avg_start:avg_end + 1].mean())
+
+        # Half-open candidate range: adjacent buckets share an endpoint, so an
+        # inclusive upper bound could select the same point twice on flat or
+        # collinear geometry. bucket_size > 1 whenever threshold < n, so the
+        # range is never empty.
+        range_start = int(math.floor((i - 1) * bucket_size)) + 1
+        range_end = min(int(math.floor(i * bucket_size)) + 1, n - 1)
+        idxs = np.arange(range_start, range_end)
+
+        ax, ay = x[a], y[a]
+        areas = np.abs((ax - avg_x) * (y[idxs] - ay) - (ax - x[idxs]) * (avg_y - ay))
+        chosen = int(idxs[int(np.argmax(areas))])
+        sampled.append(chosen)
+        a = chosen
+
+    sampled.append(n - 1)
+    return sampled
+
+
 # ---- registry --------------------------------------------------------------
 
 REGISTRY: dict = {
@@ -978,6 +1053,7 @@ REGISTRY: dict = {
     "survfit": transform_survfit,
     "fit_distribution": transform_fit_distribution,
     "pairwise_test": transform_pairwise_test,
+    "lttb": transform_lttb,
 }
 
 

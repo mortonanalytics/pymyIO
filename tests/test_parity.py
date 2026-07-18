@@ -65,7 +65,7 @@ def test_transform_registry_completeness():
         "identity", "lm", "cumulative", "quantiles", "median", "outliers",
         "density", "mean", "summary", "loess", "polynomial", "smooth",
         "residuals", "ci", "mean_ci", "pairwise_test", "qq", "survfit",
-        "fit_distribution", "quantile_dots",
+        "fit_distribution", "quantile_dots", "lttb",
     }
     assert set(REGISTRY.keys()) == expected
 
