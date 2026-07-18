@@ -10,6 +10,7 @@ on:
     paths:
       - 'vendor/myIO'
       - '.gitmodules'
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -28,7 +29,15 @@ jobs:
       - name: Fetch submodule history
         working-directory: vendor/myIO
         run: |
-          git fetch --no-tags --prune origin '+refs/heads/*:refs/remotes/origin/*' || true
+          # actions/checkout clones submodules shallow (it inherits
+          # fetch-depth), and a plain fetch into a shallow repo only moves the
+          # tips — the upstream SHAs the issues reference stay absent and every
+          # ancestor check silently skips. Unshallow before checking.
+          if [ -f "$(git rev-parse --git-dir)/shallow" ]; then
+            git fetch --unshallow --no-tags --prune origin '+refs/heads/*:refs/remotes/origin/*'
+          else
+            git fetch --no-tags --prune origin '+refs/heads/*:refs/remotes/origin/*'
+          fi
 
       - name: Resolve current submodule HEAD
         id: sub
@@ -53,7 +62,8 @@ jobs:
             --limit 200 \
             --json number,title,body)"
 
-          echo "$issues_json" | jq -c '.[]' | while read -r row; do
+          missing=0
+          while read -r row; do
             num="$(echo "$row"  | jq -r '.number')"
             title="$(echo "$row" | jq -r '.title')"
             body="$(echo "$row"  | jq -r '.body')"
@@ -72,7 +82,8 @@ jobs:
 
             # Is the upstream SHA an ancestor of the current submodule HEAD?
             if ! git cat-file -e "$upstream_sha^{commit}" 2>/dev/null; then
-              echo "issue #$num: upstream $upstream_sha not fetched locally; skipping"
+              echo "::error::issue #$num: upstream $upstream_sha not present in submodule history"
+              missing=$((missing + 1))
               continue
             fi
 
@@ -85,4 +96,12 @@ jobs:
             else
               echo "issue #$num: $upstream_sha is NOT yet in submodule HEAD ($SUBMODULE_SHA) — leaving open"
             fi
-          done
+          done < <(echo "$issues_json" | jq -c '.[]')
+
+          # A referenced SHA we can't even resolve means the fetch above is
+          # broken (or upstream rewrote history) — fail loudly instead of
+          # reporting success while doing nothing.
+          if [ "$missing" -gt 0 ]; then
+            echo "::error::$missing issue(s) reference SHAs missing from submodule history"
+            exit 1
+          fi
