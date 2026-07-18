@@ -1,6 +1,6 @@
 # Shiny + Jupyter Integration for pymyIO 0.2.0
 
-**Status:** Design
+**Status:** Archived 2026-07-17 — shipped in 0.2.0. pymyio.shiny (output_myio/render_myio), to_standalone_html(), and the host-fragmentation hardening all landed. Upstream myIO now also ships myIOProxy() partial updates (myIO#82); any future Shiny work should build on that, not this doc.
 **Date:** 2026-04-18
 **Target release:** pymyIO 0.2.0
 **Layers touched:** `core` (new Python surface), `engine` (small JS hardening — no API break), `integrations` (new Shiny submodule, host documentation)

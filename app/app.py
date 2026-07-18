@@ -1,8 +1,8 @@
 """pymyIO chart gallery — Shiny for Python.
 
 Mirrors the R-myIO Shiny demo at app/app.R, ported to py-shiny + shinywidgets.
-Tabs whose transforms are deferred (loess, smooth, survfit, fit_distribution,
-pairwise_test) live under "Coming in 0.2+" with their roadmap pointer.
+All registry transforms are live; the Statistical menu demos them, including
+the uncertainty-viz types (quantile_dots, fan) added with myIO PR #50 parity.
 """
 
 from __future__ import annotations
@@ -297,6 +297,26 @@ app_ui = ui.page_navbar(
         ),
         ui.nav_panel("Pairwise Comparison",
             ui.div({"class": "chart-container"}, output_myio("comparison_plot"))),
+        ui.nav_panel("Quantile Dots",
+            ui.layout_sidebar(
+                ui.sidebar(
+                    ui.input_slider("qd_n", "Dots per distribution",
+                        min=5, max=50, value=20, step=5),
+                    ui.input_slider("qd_threshold", "Demand threshold",
+                        min=40, max=80, value=55, step=1),
+                ),
+                output_myio("quantile_dots_plot"),
+            ),
+        ),
+        ui.nav_panel("Fan (Forecast)",
+            ui.layout_sidebar(
+                ui.sidebar(
+                    ui.input_slider("fan_horizon", "Forecast horizon (weeks)",
+                        min=12, max=48, value=24, step=4),
+                ),
+                output_myio("fan_plot"),
+            ),
+        ),
     ),
     ui.nav_menu(
         "Specialized",
@@ -450,6 +470,13 @@ app_ui = ui.page_navbar(
     title=ui.span("pymyIO"),
     id="nav",
     header=ui.tags.head(ui.tags.style(NAVBAR_CSS)),
+    # Version marker doubles as the deploy-verification probe:
+    # `curl -s <gallery>/ | grep pymyio-version` confirms which build is live.
+    footer=ui.div(
+        {"class": "text-center text-muted", "id": "pymyio-version",
+         "style": "padding: 0.5rem; font-size: 0.8rem;"},
+        f"pymyio {pymyio.__version__}",
+    ),
 )
 
 
@@ -723,6 +750,55 @@ def server(input, output, session):
             .define_categorical_axis(x_axis=True)
             .set_axis_format(y_format=".1f",
                              x_label="Treatment", y_label="Score")
+            .render()
+        )
+
+    @render_myio
+    def quantile_dots_plot():
+        n = int(input.qd_n())
+        threshold = float(input.qd_threshold())
+        # Empirical demand forecasts: 300 draws per scenario.
+        rows = []
+        for seed, (scenario, mu, sd) in enumerate(
+                [("Baseline", 50, 6), ("Expansion", 62, 9), ("Downturn", 44, 5)],
+                start=1):
+            r = random.Random(seed * 7)
+            rows.extend({"scenario": scenario, "demand": r.gauss(mu, sd)}
+                        for _ in range(300))
+        df = pd.DataFrame(rows)
+        return (
+            MyIO(data=df)
+            .add_layer(type="quantile_dots", color=OKABE_ITO[:3],
+                       label="Demand forecast",
+                       mapping={"x_var": "scenario", "y_var": "demand"},
+                       options={"n": n, "source": "empirical",
+                                "threshold": threshold})
+            .define_categorical_axis(x_axis=True)
+            .set_axis_format(y_format=".0f",
+                             x_label="Scenario", y_label="Weekly demand")
+            .render()
+        )
+
+    @render_myio
+    def fan_plot():
+        horizon = int(input.fan_horizon())
+        # Forecast draws with uncertainty widening over the horizon.
+        r = random.Random(17)
+        draws = [{"week": week, "value": 100 + 1.8 * week
+                  + r.gauss(0, 4 * math.sqrt(week + 1))}
+                 for week in range(horizon + 1)
+                 for _ in range(200)]
+        df = pd.DataFrame(draws)
+        medians = df.groupby("week", as_index=False)["value"].median()
+        return (
+            MyIO()
+            .add_layer(type="fan", color=OKABE_ITO[0], label="Forecast",
+                       data=df, mapping={"x_var": "week", "y_var": "value"},
+                       options={"levels": [50, 80, 95]})
+            .add_layer(type="line", color=OKABE_ITO[0], label="Median",
+                       data=medians, mapping={"x_var": "week", "y_var": "value"})
+            .set_axis_format(x_format=".0f", y_format=".0f",
+                             x_label="Week", y_label="Projected value")
             .render()
         )
 

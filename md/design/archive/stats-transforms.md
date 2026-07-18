@@ -1,6 +1,6 @@
 # Statistical Transforms for pymyIO
 
-**Status:** Design
+**Status:** Archived 2026-07-17 — shipped. All transforms in this design (loess, smooth, density, pairwise_test, survfit, fit_distribution) are live in pymyio.transforms (20-entry registry as of v0.3.0); numpy+scipy are required deps as decided here.
 **Date:** 2026-04-18
 **Layers touched:** `core` (transforms.py), `packaging` (pyproject.toml), `tests`
 
