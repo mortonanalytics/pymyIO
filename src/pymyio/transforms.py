@@ -90,6 +90,27 @@ def _zip_xy(records: Records, x_col: str, y_col: str) -> Tuple[List[float], List
     return xs, ys
 
 
+def order_group_values(values: List[Any]) -> List[Any]:
+    """Port of R/order_group_values.R — shared positional-axis group order.
+
+    Composites that hand out integer positions to a categorical variable must
+    agree on the order: ascending sort, None/NaN last. R's factor-level rule
+    has no Python analog (categorical dtype is lost by record coercion), and
+    Python's codepoint string sort matches R's forced C-locale radix sort.
+    Mixed-type values that cannot be compared keep their encounter order,
+    matching R where a vector cannot mix types.
+    """
+    def _is_na(v: Any) -> bool:
+        return v is None or (isinstance(v, float) and math.isnan(v))
+
+    present = [v for v in values if not _is_na(v)]
+    missing = [v for v in values if _is_na(v)]
+    try:
+        return sorted(present) + missing
+    except TypeError:
+        return list(values)
+
+
 # ---- transforms ------------------------------------------------------------
 
 def transform_identity(records: Records, mapping: Mapping[str, str], options) -> TransformResult:
@@ -863,14 +884,15 @@ def transform_pairwise_test(records: Records, mapping: Mapping[str, str], option
     step_fraction = float(opts.get("step_fraction", 0.08))
     comparisons = opts.get("comparisons", None)
 
-    # Group in input order; coerce label to str; fail-fast on non-numeric y.
+    # Group rows; coerce label to str; fail-fast on non-numeric y.
     groups = {}
     order = []
+    raw_first = {}
     for row in records:
-        g = row.get(x_col)
-        if g is None:
+        raw_g = row.get(x_col)
+        if raw_g is None:
             continue
-        g = str(g)
+        g = str(raw_g)
         y = row.get(y_col)
         if y is None:
             continue
@@ -884,7 +906,11 @@ def transform_pairwise_test(records: Records, mapping: Mapping[str, str], option
         if g not in groups:
             groups[g] = []
             order.append(g)
+            raw_first[g] = raw_g
         groups[g].append(float(y))
+    # Positions must match the ones composite_boxplot hands out, or the
+    # significance brackets span the wrong pair of boxes.
+    order = [str(v) for v in order_group_values([raw_first[g] for g in order])]
     if len(order) < 2:
         raise ValueError(
             f"transform_pairwise_test: need at least 2 groups; got {len(order)}."

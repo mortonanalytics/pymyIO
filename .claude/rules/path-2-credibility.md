@@ -22,10 +22,10 @@ pymyIO is **not a revenue product**. It's a credibility moat that compounds Path
 3. **SBIR narrative asset** — Innovation + Key Personnel + Commercialization sections cite pymyIO alongside myIO.
 4. **Federal market reach.** The federal data analytics market is shifting from R to Python. Holding both languages doubles the addressable surface for the credibility moat.
 
-## Current state (2026-07-17)
+## Current state (2026-07-29)
 
-- v0.3.0 (2026-07-17): engine re-pinned to myIO 1.2.0-dev (`1dbc008`), new `lttb` transform (Python port of myIO#80)
-- 34 chart types, 20 statistical transforms; tracking myIO main ahead of its ~Aug 1 1.2.0 release — re-pin + matching pymyIO release when it tags
+- v0.4.0 (2026-07-29): engine re-pinned to myIO v1.3.0 release tag (`423d6da`), ported keyframes (`add_keyframe`), `set_legend_title`, bare group-value layer labels + `groupVar`, deterministic group ordering, regression color split
+- 34 chart types, 20 statistical transforms; pinned to the v1.3.0 release tag — matching-release cadence is current
 - Gallery at pymyio.morton-analytics.com (footer version marker verifies deployed build)
 
 ## Maintenance cadence (Path 2 expectation)

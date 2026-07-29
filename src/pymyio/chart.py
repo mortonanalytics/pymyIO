@@ -13,7 +13,7 @@ import math
 import time
 from typing import Any, Iterable, List, Mapping, Optional, Sequence, Tuple, Union
 
-from .transforms import get_transform
+from .transforms import get_transform, order_group_values
 
 OKABE_ITO_PALETTE: List[str] = [
     "#E69F00", "#56B4E9", "#009E73", "#F0E442",
@@ -270,6 +270,9 @@ def _expand_boxplot(records, mapping, label, color, options):
     x_col, y_col = mapping["x_var"], mapping["y_var"]
 
     order, groups = _group_y(records, x_col, y_col)
+    # Positions follow the shared rule (order_group_values) so boxplot,
+    # violin, ridgeline and pairwise_test brackets agree.
+    order = order_group_values(order)
     positions = list(range(1, len(order) + 1))
     rows = []
     for pos, key in zip(positions, order):
@@ -351,6 +354,7 @@ def _expand_violin(records, mapping, label, color, options):
     x_col, y_col = mapping["x_var"], mapping["y_var"]
 
     order, groups = _group_y(records, x_col, y_col)
+    order = order_group_values(order)
     positions = list(range(1, len(order) + 1))
     palette = _palette_for_groups(color, len(order))
 
@@ -417,13 +421,16 @@ def _expand_violin(records, mapping, label, color, options):
             vals = groups[key]
             if not vals:
                 continue
-            med_data.append({"x_var": pos, "y_var": _quantile(vals, 0.5), "group": str(key)})
+            med = _quantile(vals, 0.5)
+            med_data.append({"x_var": pos, "y_var": med, "low_y": med,
+                             "high_y": med, "group": str(key)})
         if med_data:
             layers.append({
                 "type": "point", "label": f"{label} - median",
                 "data": med_data, "color": box_color,
                 "transform": "identity", "options": {}, "role": "median",
-                "mapping": {"x_var": "x_var", "y_var": "y_var", "group": "group"},
+                "mapping": {"x_var": "x_var", "y_var": "y_var", "low_y": "low_y",
+                             "high_y": "high_y", "group": "group"},
             })
 
     if show_points:
@@ -462,6 +469,9 @@ def _expand_ridgeline(records, mapping, label, color, options):
         if g not in seen:
             seen.add(g)
             group_order.append(g)
+    # Ridges stack upward from baseline 1, so the first group renders at the
+    # bottom; order_group_values defines the shared ordering rule.
+    group_order = order_group_values(group_order)
     palette = _palette_for_groups(color, len(group_order))
 
     density_per_group = []
@@ -557,7 +567,7 @@ def _expand_qq(records, mapping, label, color, options):
         layers = []
         for g, col in zip(gorder, palette):
             subset = [r for r in records if r.get(group_col) == g]
-            layers.extend(_qq_for(subset, f"{label} \u2014 {g}", col))
+            layers.extend(_qq_for(subset, str(g), col))
         return layers
 
     return _qq_for(records, label, base_color)
@@ -678,12 +688,27 @@ def _expand_composite(type: str, records: List[dict], mapping: Mapping[str, str]
                       label: str, color: Any, options: Mapping[str, Any]) -> List[dict]:
     """Expand a composite layer type into a list of primitive sub-layer specs."""
     if type == "regression":
+        # Raw data and fitted model take distinct hues so the scatter and the
+        # fit line are visually separable; a second element in `color` is the
+        # explicit model color. Mirrors R/composite_regression.R.
+        if color is None:
+            data_color = OKABE_ITO_PALETTE[0]
+        elif isinstance(color, str):
+            data_color = color
+        else:
+            data_color = str(list(color)[0])
+        if not isinstance(color, str) and isinstance(color, (list, tuple)) and len(color) >= 2:
+            model_color = str(list(color)[1])
+        elif data_color.lower() == OKABE_ITO_PALETTE[4].lower():
+            model_color = OKABE_ITO_PALETTE[5]
+        else:
+            model_color = OKABE_ITO_PALETTE[4]
         return [
             {"type": "point", "label": f"{label}::points",
-             "data": records, "mapping": mapping, "color": color,
+             "data": records, "mapping": mapping, "color": data_color,
              "transform": "identity", "options": options, "role": "raw"},
             {"type": "line", "label": f"{label}::fit",
-             "data": records, "mapping": mapping, "color": color,
+             "data": records, "mapping": mapping, "color": model_color,
              "transform": "lm", "options": options, "role": "fit"},
         ]
     if type == "boxplot":
@@ -765,6 +790,45 @@ def _derive_positional_x_tick_labels(type: str, sub_specs: List[dict]) -> Option
     return ordered
 
 
+def _derive_positional_y_tick_labels(type: str, sub_specs: List[dict]) -> Optional[dict]:
+    """Port of R's derive_positional_y_tick_labels — ridgeline group names on y."""
+    if type != "ridgeline":
+        return None
+
+    labels: dict = {}
+    numeric_positions = []
+    for spec in sub_specs:
+        mapping = spec.get("mapping", {})
+        y_col = mapping.get("low_y")
+        group_col = mapping.get("group")
+        if not y_col or not group_col:
+            continue
+        for row in spec.get("data", []):
+            if y_col not in row or group_col not in row:
+                continue
+            position = row[y_col]
+            label = row[group_col]
+            if position is None or label is None:
+                continue
+            try:
+                numeric_position = float(position)
+            except (TypeError, ValueError):
+                continue
+            if abs(numeric_position - round(numeric_position)) >= 1e-9:
+                continue
+            key = str(int(round(numeric_position)))
+            if key not in labels:
+                labels[key] = str(label)
+                numeric_positions.append((numeric_position, key))
+
+    if not labels:
+        return None
+    ordered = {}
+    for _, key in sorted(numeric_positions, key=lambda item: item[0]):
+        ordered[key] = labels[key]
+    return ordered
+
+
 # ---- chart -----------------------------------------------------------------
 
 class MyIO:
@@ -822,6 +886,7 @@ class MyIO:
                 "yAxisLabel": None,
                 "toolTipFormat": "",
                 "xTickLabels": None,
+                "yTickLabels": None,
             },
             "interactions": {
                 "dragPoints": False,
@@ -933,6 +998,11 @@ class MyIO:
             tick_labels = _derive_positional_x_tick_labels(type, sub_specs)
             if tick_labels:
                 self.config["axes"]["xTickLabels"] = tick_labels
+            y_tick_labels = _derive_positional_y_tick_labels(type, sub_specs)
+            if y_tick_labels:
+                self.config["axes"]["yTickLabels"] = y_tick_labels
+                if self.config["axes"]["yAxisLabel"] is None and mapping.get("group"):
+                    self.config["axes"]["yAxisLabel"] = mapping["group"]
             for order, spec in enumerate(sub_specs, start=1):
                 spec_mapping = _inject_transform_mapping(
                     spec["transform"], spec["mapping"],
@@ -985,6 +1055,7 @@ class MyIO:
         derived_from: Optional[str] = None,
         composite: Optional[str] = None,
         composite_role: Optional[str] = None,
+        group_var: Optional[str] = None,
     ) -> dict:
         opts = {"barSize": "large", "toolTipOptions": {"suppressY": False}}
         if options:
@@ -1008,6 +1079,11 @@ class MyIO:
         if composite is not None:
             layer["_composite"] = composite
             layer["_compositeRole"] = composite_role
+        # Marks a layer whose label IS a value of `group_var`. Composite
+        # sub-layers carry mapping group too but their labels are not bare
+        # group values, so they deliberately never get this field.
+        if group_var is not None:
+            layer["groupVar"] = group_var
         return layer
 
     def _append_grouped_layers(
@@ -1038,7 +1114,11 @@ class MyIO:
 
         existing_labels = {layer["label"] for layer in self.config["layers"]}
         for index, value in enumerate(groups, start=1):
-            sub_label = f"{label} \u2014 {value}"
+            sub_label = str(value)
+            if sub_label in existing_labels:
+                # Fall back to the legacy "<label> \u2014 <group>" form when the
+                # bare group value would collide with an existing layer.
+                sub_label = f"{label} \u2014 {value}"
             if sub_label in existing_labels:
                 raise ValueError(f"Layer label '{sub_label}' already exists.")
             existing_labels.add(sub_label)
@@ -1049,8 +1129,89 @@ class MyIO:
                 color=palette[(index - 1) % len(palette)],
                 transform=transform, options=options,
                 layer_id=layer_id, order=index, derived_from=layer_id,
-                transform_meta=tx_meta,
+                transform_meta=tx_meta, group_var=group_col,
             ))
+
+    def add_keyframe(
+        self,
+        data: Union[DataFrameLike, Mapping[str, DataFrameLike]],
+        label: str,
+    ) -> "MyIO":
+        """Register a named data state for sequential chart storytelling.
+
+        Mirrors R's ``addKeyframe()``. A chart with one layer accepts a data
+        frame directly; multi-layer charts use a dict of data frames keyed by
+        existing layer labels — omitted layers retain their data from the
+        previous keyframe. Each snapshot is serialized through the layer's
+        own transform.
+        """
+        layers = self.config["layers"]
+        if not layers:
+            raise ValueError("addKeyframe(): the chart must have at least one layer.")
+        if not isinstance(label, str) or not label.strip():
+            raise ValueError("addKeyframe(): label must be a single non-empty string.")
+
+        keyframes = self.config.get("keyframes") or []
+        if label in {frame["label"] for frame in keyframes}:
+            raise ValueError(
+                f"addKeyframe(): label must be unique; '{label}' already exists."
+            )
+
+        layer_labels = [layer["label"] for layer in layers]
+        if isinstance(data, Mapping):
+            if not data or not all(isinstance(k, str) and k for k in data):
+                raise ValueError(
+                    "addKeyframe(): data must be a non-empty named list keyed "
+                    "by layer label."
+                )
+            unknown = [k for k in data if k not in layer_labels]
+            if unknown:
+                raise ValueError(
+                    f"addKeyframe(): unknown layer label(s): {', '.join(unknown)}."
+                )
+            updates = dict(data)
+        else:
+            if len(layers) != 1:
+                raise ValueError(
+                    "addKeyframe(): multi-layer charts require a named list of "
+                    "data frames."
+                )
+            updates = {layer_labels[0]: data}
+
+        if keyframes:
+            prior_by_label = {
+                snap["label"]: snap for snap in keyframes[-1]["layers"]
+            }
+        else:
+            prior_by_label = {
+                layer["label"]: {"label": layer["label"], "data": layer["data"]}
+                for layer in layers
+            }
+
+        snapshot = []
+        for layer in layers:
+            layer_label = layer["label"]
+            if layer_label in updates:
+                try:
+                    records = _to_records(updates[layer_label])
+                except TypeError:
+                    raise ValueError(
+                        f"addKeyframe(): data for layer '{layer_label}' must "
+                        "be a data frame."
+                    ) from None
+                for i, row in enumerate(records, start=1):
+                    row.setdefault("_source_key", f"row_{i}")
+                tx_records, _ = get_transform(layer["transform"] or "identity")(
+                    records, layer["mapping"], layer["options"],
+                )
+                snapshot.append({"label": layer_label, "data": tx_records})
+            else:
+                snapshot.append(
+                    {"label": layer_label, "data": prior_by_label[layer_label]["data"]}
+                )
+
+        self.config["keyframes"] = keyframes + [{"label": label, "layers": snapshot}]
+        return self
 
     def _check_layer_compatibility(self, type: str) -> None:
         new_group = COMPATIBILITY_GROUPS.get(type)
@@ -1096,6 +1257,8 @@ class MyIO:
         self.config["layout"]["margin"] = {
             "top": top, "bottom": bottom, "left": left, "right": right,
         }
+        # Explicit margins opt the chart out of the engine's left-margin auto-fit.
+        self.config["layout"]["marginSet"] = True
         return self
 
     def set_axis_format(
@@ -1196,6 +1359,27 @@ class MyIO:
 
     def suppress_legend(self, suppress: bool = True) -> "MyIO":
         self.config["layout"]["suppressLegend"] = suppress
+        return self
+
+    def set_legend_title(self, title: Union[str, bool, None] = None) -> "MyIO":
+        """Set, derive, or clear the legend title.
+
+        Mirrors R's ``setLegendTitle()``: a string sets a literal title,
+        ``True`` derives it from the grouping column, ``None``/``False``
+        clears it (the default for every chart).
+        """
+        if title is None or title is False:
+            self.config["layout"].pop("legendTitle", None)
+            return self
+        if title is True:
+            self.config["layout"]["legendTitle"] = True
+            return self
+        if not isinstance(title, str):
+            raise ValueError(
+                "setLegendTitle(): `title` must be a single character string, "
+                "TRUE, or NULL."
+            )
+        self.config["layout"]["legendTitle"] = title
         return self
 
     def suppress_axis(
@@ -1376,7 +1560,7 @@ def link_charts(
             "enabled": True,
             "keyColumn": on,
             "group": group_name,
-            "mode": "bidirectional",
+            "mode": "both",
             "cursor": bool(cursor),
             "cursorAxis": cursor_axis,
         }

@@ -4,6 +4,62 @@ All notable changes to pymyIO are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] — 2026-07-29
+
+### Added
+
+- **`add_keyframe()`** (parity with myIO v1.3.0's `addKeyframe`,
+  [myIO#101](https://github.com/mortonanalytics/myIO/pull/101)): register
+  named data states for sequential chart storytelling. A single-layer chart
+  accepts a data frame directly; multi-layer charts take a dict keyed by
+  layer label, with omitted layers carrying forward from the previous
+  keyframe. Snapshots are serialized through each layer's own transform.
+  R's Shiny proxy helpers `setKeyframe()`/`stepKeyframe()` are not ported —
+  there is no Python proxy surface (same precedent as
+  `myIOProxy`/`setTransition`).
+- **`set_legend_title()`** (parity with `setLegendTitle`): a string sets a
+  literal legend title, `True` derives it from the grouping column,
+  `None`/`False` clears it.
+- **Ridgeline y-axis group labels**: ridgeline composites now emit
+  `axes.yTickLabels` mapping baseline positions to group names, and default
+  `yAxisLabel` to the grouping column.
+- **`order_group_values`**: shared deterministic ordering rule (ascending,
+  missing last) for positional-axis groups — boxplot/violin/ridgeline
+  positions and `pairwise_test` bracket endpoints now agree on it instead
+  of data-encounter order.
+
+### Changed
+
+- **Engine bump to myIO v1.3.0** (`1dbc008` → `423d6da`, 61 upstream
+  commits — the 1.3.0 stabilization pass, #101/#102): data keyframes,
+  legend titles, y-domain zero-baseline scale hints for
+  bar/groupedBar/lollipop, left-margin auto-fit, treemap FAB gutter,
+  Crosstalk keyspace guard for `setLinked`, and visual-review defect fixes.
+- **Grouped layers are labeled with the bare group value** (`"Core"`, not
+  `"Rankings — Core"`), falling back to the qualified `"label — group"`
+  form only when the bare value would collide with an existing layer.
+  Grouped layers also carry a `groupVar` field naming the grouping column
+  (feeds `set_legend_title(True)` derivation engine-side). Grouped `qq`
+  sub-layer labels follow the same rule.
+- **`regression` composite separates data and model colors**: the scatter
+  keeps the first supplied color (or palette hue 1); the fitted line takes
+  an explicit second color, or palette hue 5 (hue 6 if the data already
+  uses hue 5).
+- **Violin median points** now carry `low_y`/`high_y` alongside `y_var`,
+  matching the boxplot median contract.
+- **`link_charts()` writes `mode: "both"`** (was `"bidirectional"`, a token
+  the engine's `linked.js` never bound).
+- **`set_margin()` sets `layout.marginSet`**, opting the chart out of the
+  engine's left-margin auto-fit.
+
+### Not ported (documented divergence)
+
+- R's `transform_cumulative` total-row NA materialization: the Python
+  cumulative transform has no waterfall total-row support to begin with.
+- Treemap keyframes stay flat rows — the Python builder ships flat treemap
+  data and the engine builds the tree client-side, unlike R's server-side
+  `{name, children}` serialization.
+
 ## [0.3.0] — 2026-07-17
 
 ### Added

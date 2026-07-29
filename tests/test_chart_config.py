@@ -125,14 +125,30 @@ def test_no_data_raises():
 
 
 def test_grouped_mapping_expands_into_one_layer_per_group():
+    # v1.3.0 labels grouped layers with the bare group value (encounter order).
     chart = MyIO(data=SAMPLE).add_layer(
         type="line", label="mpg-by-cyl",
         mapping={"x_var": "wt", "y_var": "mpg", "group": "cyl"},
     )
     labels = [layer["label"] for layer in chart.to_config()["layers"]]
-    assert labels == ["mpg-by-cyl \u2014 6", "mpg-by-cyl \u2014 4", "mpg-by-cyl \u2014 8"]
+    assert labels == ["6", "4", "8"]
     colors = [layer["color"] for layer in chart.to_config()["layers"]]
     assert colors == OKABE_ITO_PALETTE[:3]
+    assert all(layer["groupVar"] == "cyl" for layer in chart.to_config()["layers"])
+
+
+def test_second_grouped_layer_falls_back_to_qualified_label():
+    # Mirrors upstream test_grouped_layer_labels.R: same group levels twice.
+    chart = MyIO(data=SAMPLE).add_layer(
+        type="line", label="A",
+        mapping={"x_var": "wt", "y_var": "mpg", "group": "cyl"},
+    ).add_layer(
+        type="line", label="B",
+        mapping={"x_var": "wt", "y_var": "mpg", "group": "cyl"},
+    )
+    labels = [layer["label"] for layer in chart.to_config()["layers"]]
+    assert labels == ["6", "4", "8", "B \u2014 6", "B \u2014 4", "B \u2014 8"]
+    assert len(set(labels)) == 6
 
 
 def test_waterfall_default_transform_is_cumulative():
@@ -244,3 +260,92 @@ def test_okabe_ito_palette_matches_r_canonical_set():
         "#E69F00", "#56B4E9", "#009E73", "#F0E442",
         "#0072B2", "#D55E00", "#CC79A7", "#999999",
     ]
+
+
+# ---- v1.3.0 engine parity additions ----------------------------------------
+
+def test_set_legend_title_stores_derives_and_clears():
+    # Mirrors upstream test_setLegendTitle.R.
+    chart = MyIO().set_legend_title("Month")
+    assert chart.to_config()["layout"]["legendTitle"] == "Month"
+    chart.set_legend_title(True)
+    assert chart.to_config()["layout"]["legendTitle"] is True
+    chart.set_legend_title(None)
+    assert "legendTitle" not in chart.to_config()["layout"]
+    assert "legendTitle" not in MyIO().to_config()["layout"]
+
+
+def test_set_legend_title_rejects_non_scalar_string():
+    with pytest.raises(ValueError, match="single character string"):
+        MyIO().set_legend_title(3)
+    with pytest.raises(ValueError, match="single character string"):
+        MyIO().set_legend_title(["a", "b"])
+
+
+def test_set_margin_records_explicit_opt_out_of_auto_fit():
+    # Mirrors upstream: explicit margins set layout.marginSet.
+    assert "marginSet" not in MyIO().to_config()["layout"]
+    chart = MyIO().set_margin(left=30)
+    assert chart.to_config()["layout"]["marginSet"] is True
+
+
+def test_link_charts_mode_is_a_token_linked_js_binds():
+    from pymyio import link_charts
+    a = MyIO([{"k": 1, "y": 2}])
+    b = MyIO([{"k": 1, "y": 3}])
+    link_charts(a, b, on="k")
+    for chart in (a, b):
+        mode = chart.to_config()["interactions"]["linked"]["mode"]
+        assert mode == "both"
+        assert mode in {"source", "target", "both"}
+
+
+def test_ridgeline_derives_y_tick_labels_and_axis_label():
+    records = [{"v": float(i % 7), "g": name}
+               for name in ("beta", "alpha") for i in range(30)]
+    chart = MyIO(records).add_layer(
+        type="ridgeline", label="ridge",
+        mapping={"x_var": "v", "y_var": "v", "group": "g"})
+    axes = chart.to_config()["axes"]
+    # order_group_values puts alpha at baseline 1 despite beta appearing first
+    assert axes["yTickLabels"] == {"1": "alpha", "2": "beta"}
+    assert axes["yAxisLabel"] == "g"
+
+
+def test_violin_median_points_carry_low_and_high_y():
+    records = [{"g": name, "v": float(i)}
+               for name in ("a", "b") for i in range(1, 12)]
+    chart = MyIO(records).add_layer(
+        type="violin", label="vio", mapping={"x_var": "g", "y_var": "v"})
+    median = next(l for l in chart.to_config()["layers"]
+                  if l["_compositeRole"] == "median")
+    for row in median["data"]:
+        assert row["low_y"] == row["y_var"] == row["high_y"]
+    assert median["mapping"]["low_y"] == "low_y"
+    assert median["mapping"]["high_y"] == "high_y"
+
+
+def test_regression_separates_data_and_model_colors():
+    records = [{"x": float(i), "y": 2.0 * i + 1} for i in range(10)]
+    mapping = {"x_var": "x", "y_var": "y"}
+
+    layers = MyIO(records).add_layer(
+        type="regression", label="fit", mapping=mapping,
+    ).to_config()["layers"]
+    assert layers[0]["color"] == OKABE_ITO_PALETTE[0]   # scatter
+    assert layers[1]["color"] == OKABE_ITO_PALETTE[4]   # model
+
+    # data color already the model default -> model shifts to the next hue
+    layers = MyIO(records).add_layer(
+        type="regression", label="fit", mapping=mapping,
+        color=OKABE_ITO_PALETTE[4],
+    ).to_config()["layers"]
+    assert layers[1]["color"] == OKABE_ITO_PALETTE[5]
+
+    # explicit two-element color vector wins
+    layers = MyIO(records).add_layer(
+        type="regression", label="fit", mapping=mapping,
+        color=["#111111", "#222222"],
+    ).to_config()["layers"]
+    assert layers[0]["color"] == "#111111"
+    assert layers[1]["color"] == "#222222"
