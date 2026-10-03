@@ -13,7 +13,7 @@ import math
 import time
 from typing import Any, Iterable, List, Mapping, Optional, Sequence, Tuple, Union
 
-from .transforms import get_transform, order_group_values
+from .transforms import get_transform, group_key, group_labels, order_group_values
 
 OKABE_ITO_PALETTE: List[str] = [
     "#E69F00", "#56B4E9", "#009E73", "#F0E442",
@@ -250,7 +250,7 @@ def _group_y(records: List[dict], x_col: str, y_col: str) -> Tuple[List[Any], di
     groups: dict = {}
     order: list = []
     for row in records:
-        key = row.get(x_col)
+        key = group_key(row.get(x_col))
         if key not in groups:
             groups[key] = []
             order.append(key)
@@ -274,6 +274,7 @@ def _expand_boxplot(records, mapping, label, color, options):
     # violin, ridgeline and pairwise_test brackets agree.
     order = order_group_values(order)
     positions = list(range(1, len(order) + 1))
+    names = dict(zip(order, group_labels(order)))
     rows = []
     for pos, key in zip(positions, order):
         vals = groups[key]
@@ -291,7 +292,7 @@ def _expand_boxplot(records, mapping, label, color, options):
             in_hi = [v for v in vals if v <= hi_fence]
             wlo = min(in_lo) if in_lo else q1
             whi = max(in_hi) if in_hi else q3
-        rows.append((pos, q1, q3, med, wlo, whi, str(key)))
+        rows.append((pos, q1, q3, med, wlo, whi, names[key]))
 
     box_data = [{"x_var": p, "low_y": q1, "high_y": q3, "group": g}
                 for (p, q1, q3, _m, _wl, _wh, g) in rows]
@@ -323,16 +324,16 @@ def _expand_boxplot(records, mapping, label, color, options):
     if show_outliers:
         out_records, _ = transform_outliers(records, mapping, options)
         if out_records:
-            pos_lookup = {str(k): p for p, k in zip(positions, order)}
+            pos_lookup = dict(zip(order, positions))
             outlier_rows = []
             for r in out_records:
-                g = str(r.get(x_col))
+                g = group_key(r.get(x_col))
                 if g not in pos_lookup:
                     continue
                 v = r.get(y_col)
                 if v is None:
                     continue
-                outlier_rows.append({"x_var": pos_lookup[g], "y_var": float(v), "group": g})
+                outlier_rows.append({"x_var": pos_lookup[g], "y_var": float(v), "group": names[g]})
             if outlier_rows:
                 layers.append({
                     "type": "point", "label": f"{label} - outliers",
@@ -356,6 +357,7 @@ def _expand_violin(records, mapping, label, color, options):
     order, groups = _group_y(records, x_col, y_col)
     order = order_group_values(order)
     positions = list(range(1, len(order) + 1))
+    names = dict(zip(order, group_labels(order)))
     palette = _palette_for_groups(color, len(order))
 
     densities = []
@@ -380,7 +382,7 @@ def _expand_violin(records, mapping, label, color, options):
     for pos, key, dens, col in zip(positions, order, densities, palette):
         if not dens:
             continue
-        gstr = str(key)
+        gstr = names[key]
         violin_data = [
             {"x_var": pos, "y_var": d["x_var"],
              "low_x": pos - d["high_y"] * scale,
@@ -405,7 +407,7 @@ def _expand_violin(records, mapping, label, color, options):
             if not vals:
                 continue
             q1, q3 = _quantile(vals, 0.25), _quantile(vals, 0.75)
-            box_data.append({"x_var": pos, "low_y": q1, "high_y": q3, "group": str(key)})
+            box_data.append({"x_var": pos, "low_y": q1, "high_y": q3, "group": names[key]})
         if box_data:
             layers.append({
                 "type": "rangeBar", "label": f"{label} - iqr_box",
@@ -423,7 +425,7 @@ def _expand_violin(records, mapping, label, color, options):
                 continue
             med = _quantile(vals, 0.5)
             med_data.append({"x_var": pos, "y_var": med, "low_y": med,
-                             "high_y": med, "group": str(key)})
+                             "high_y": med, "group": names[key]})
         if med_data:
             layers.append({
                 "type": "point", "label": f"{label} - median",
@@ -444,7 +446,7 @@ def _expand_violin(records, mapping, label, color, options):
                 -0.2 + 0.4 * i / (n - 1) for i in range(n)
             ]
             for off, v in zip(offsets, vals):
-                pt_data.append({"x_var": pos + off, "y_var": v, "group": str(key)})
+                pt_data.append({"x_var": pos + off, "y_var": v, "group": names[key]})
         if pt_data:
             layers.append({
                 "type": "point", "label": f"{label} - points",
@@ -465,19 +467,20 @@ def _expand_ridgeline(records, mapping, label, color, options):
 
     seen, group_order = set(), []
     for r in records:
-        g = r.get(group_col)
+        g = group_key(r.get(group_col))
         if g not in seen:
             seen.add(g)
             group_order.append(g)
     # Ridges stack upward from baseline 1, so the first group renders at the
     # bottom; order_group_values defines the shared ordering rule.
     group_order = order_group_values(group_order)
+    names = dict(zip(group_order, group_labels(group_order)))
     palette = _palette_for_groups(color, len(group_order))
 
     density_per_group = []
     max_density = 0.0
     for g in group_order:
-        sub = [{x_col: r.get(x_col)} for r in records if r.get(group_col) == g
+        sub = [{x_col: r.get(x_col)} for r in records if group_key(r.get(group_col)) == g
                and r.get(x_col) is not None]
         if not sub:
             density_per_group.append([])
@@ -499,7 +502,7 @@ def _expand_ridgeline(records, mapping, label, color, options):
     for i, (g, dens, col) in enumerate(zip(group_order, density_per_group, palette), start=1):
         if not dens:
             continue
-        gstr = str(g)
+        gstr = names[g]
         ridge_data = [
             {"x_var": d["x_var"], "low_y": float(i),
              "high_y": float(i) + d["high_y"] * scale, "group": gstr}
@@ -559,15 +562,15 @@ def _expand_qq(records, mapping, label, color, options):
     if group_col and any(r.get(group_col) is not None for r in records):
         seen, gorder = set(), []
         for r in records:
-            g = r.get(group_col)
+            g = group_key(r.get(group_col))
             if g not in seen:
                 seen.add(g)
                 gorder.append(g)
         palette = _palette_for_groups(color, len(gorder))
         layers = []
-        for g, col in zip(gorder, palette):
-            subset = [r for r in records if r.get(group_col) == g]
-            layers.extend(_qq_for(subset, str(g), col))
+        for g, gname, col in zip(gorder, group_labels(gorder), palette):
+            subset = [r for r in records if group_key(r.get(group_col)) == g]
+            layers.extend(_qq_for(subset, gname, col))
         return layers
 
     return _qq_for(records, label, base_color)
@@ -619,7 +622,7 @@ def _expand_fan(records, mapping, label, color, options):
         groups: dict = {}
         order: list = []
         for row in records:
-            key = row.get(x_col)
+            key = group_key(row.get(x_col))
             if key not in groups:
                 groups[key] = []
                 order.append(key)
@@ -1100,7 +1103,7 @@ class MyIO:
         group_col = mapping["group"]
         seen, groups = set(), []
         for row in records:
-            value = row.get(group_col)
+            value = group_key(row.get(group_col))
             if value not in seen:
                 seen.add(value)
                 groups.append(value)
@@ -1113,16 +1116,16 @@ class MyIO:
             palette = list(color)
 
         existing_labels = {layer["label"] for layer in self.config["layers"]}
-        for index, value in enumerate(groups, start=1):
-            sub_label = str(value)
+        for index, (value, name) in enumerate(zip(groups, group_labels(groups)), start=1):
+            sub_label = name
             if sub_label in existing_labels:
                 # Fall back to the legacy "<label> \u2014 <group>" form when the
                 # bare group value would collide with an existing layer.
-                sub_label = f"{label} \u2014 {value}"
+                sub_label = f"{label} \u2014 {name}"
             if sub_label in existing_labels:
                 raise ValueError(f"Layer label '{sub_label}' already exists.")
             existing_labels.add(sub_label)
-            subset = [r for r in records if r.get(group_col) == value]
+            subset = [r for r in records if group_key(r.get(group_col)) == value]
             tx_records, tx_meta = get_transform(transform)(subset, mapping, options)
             self.config["layers"].append(self._build_layer(
                 layer_type=type, label=sub_label, data=tx_records, mapping=mapping,

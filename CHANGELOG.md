@@ -4,6 +4,33 @@ All notable changes to pymyIO are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] — 2026-10-03
+
+### Changed
+
+- **Engine bump to myIO v1.4.0** (`1a6fde1` → `b023b64`): linked cursor
+  now renders `cursor_axis="y"` and `"xy"`; `set_tooltip_options(suppress_y=True)`
+  and `set_layer_opacity()` on donut/gauge/grouped bar take effect; radar
+  follows the theme; `set_transition()` easing applies to every chart type;
+  bump charts draw rank 1 first with whole-number ticks; funnel drops its
+  non-functional legend; widget lifecycle and rendering stability fixes.
+
+### Fixed
+
+- **Missing group values form one group labeled `"NA"`** (parity with
+  myIO 1.4.0 `group_matches`/`group_labels`). Previously a NaN group produced
+  a layer labeled `"nan"` with no rows. Applies to grouped layers and the
+  boxplot, violin, ridgeline, qq and fan composites and the per-x
+  transforms. When a present value already reads as `"NA"`, the missing group
+  becomes `"NA (missing)"`.
+- **`transform_lm`** drops non-finite x/y and returns an empty result with a
+  warning when fewer than two points remain, instead of passing the raw rows
+  through as the fitted line.
+- **`validate_spec`** reports `INVALID_MAPPING` for null, numeric, empty, or
+  list-valued mappings, and validates every column in a `parallel`
+  `dimensions` list. The code is not yet in the shared schema's
+  `error_codes`, so `ERROR_CODES` is unchanged.
+
 ## [0.4.0] — 2026-07-29
 
 ### Added

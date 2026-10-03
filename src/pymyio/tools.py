@@ -168,7 +168,8 @@ def validate_spec(spec: Mapping[str, Any], columns: Any = None) -> dict:
                 f"Missing required mapping '{field}' for chart type '{chart_type}'.",
             ))
 
-    for field in mapping:
+    mapped_columns = {}
+    for field, value in mapping.items():
         if field not in allowed_keys:
             errors.append(_tool_error(
                 "UNKNOWN_MAPPING_KEY",
@@ -176,22 +177,40 @@ def validate_spec(spec: Mapping[str, Any], columns: Any = None) -> dict:
                 f"Unknown mapping key '{field}' for chart type '{chart_type}'.",
                 _levenshtein(field, allowed_keys),
             ))
+        # parallel's `dimensions` alone may name several columns.
+        dimensions = chart_type == "parallel" and field == "dimensions"
+        if isinstance(value, str):
+            names = [value]
+        elif dimensions and isinstance(value, list):
+            names = value
+        else:
+            names = []
+        if names and all(isinstance(name, str) and name.strip() for name in names):
+            mapped_columns[field] = names
+        else:
+            errors.append(_tool_error(
+                "INVALID_MAPPING",
+                field,
+                f"Mapping '{field}' must contain nonempty column names.",
+            ))
 
     column_map = _normalize_columns(columns if columns is not None else spec.get("columns"))
     if column_map is not None:
-        for field, column_name in mapping.items():
-            if isinstance(column_name, str) and column_name not in column_map:
-                errors.append(_tool_error(
-                    "MISSING_COLUMN",
-                    field,
-                    f"Mapped column '{column_name}' for '{field}' is not present in columns.",
-                    _levenshtein(column_name, list(column_map.keys())),
-                ))
+        for field, names in mapped_columns.items():
+            for column_name in names:
+                if column_name not in column_map:
+                    errors.append(_tool_error(
+                        "MISSING_COLUMN",
+                        field,
+                        f"Mapped column '{column_name}' for '{field}' is not present in columns.",
+                        _levenshtein(column_name, list(column_map.keys())),
+                    ))
 
         for field in _as_list(type_schema.get("numeric_fields")):
             column_name = mapping.get(field)
             if (
                 isinstance(column_name, str)
+                and column_name.strip()
                 and column_name in column_map
                 and not _is_numeric_column(column_map[column_name])
             ):

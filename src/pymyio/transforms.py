@@ -111,6 +111,35 @@ def order_group_values(values: List[Any]) -> List[Any]:
         return list(values)
 
 
+def group_key(value: Any) -> Any:
+    """Collapse None/NaN to None so missing values form one group.
+
+    Port of R's group_matches(): NaN != NaN, so grouping on raw values splits
+    every missing row into its own group or drops it from ``==`` subsets.
+    """
+    if isinstance(value, (float, np.floating)) and math.isnan(value):
+        return None
+    return value
+
+
+def group_labels(values: List[Any]) -> List[str]:
+    """Port of R's group_labels(): string labels with missing values as "NA".
+
+    When a present value already sanitizes to "NA", the missing group becomes
+    "NA (missing)", then "NA (missing 2)", ... so the two never share a label.
+    """
+    def _tag(s: str) -> str:
+        return "".join(c for c in s if c.isascii() and (c.isalnum() or c in "_-"))
+
+    keys = [group_key(v) for v in values]
+    existing = {_tag(str(k)) for k in keys if k is not None}
+    missing_label, suffix = "NA", 1
+    while _tag(missing_label) in existing:
+        missing_label = "NA (missing)" if suffix == 1 else f"NA (missing {suffix})"
+        suffix += 1
+    return [missing_label if k is None else str(k) for k in keys]
+
+
 # ---- transforms ------------------------------------------------------------
 
 def transform_identity(records: Records, mapping: Mapping[str, str], options) -> TransformResult:
@@ -135,7 +164,7 @@ def transform_mean(records: Records, mapping: Mapping[str, str], options) -> Tra
     groups: dict = {}
     order: list = []
     for row in records:
-        key = row.get(x_col)
+        key = group_key(row.get(x_col))
         if key not in groups:
             groups[key] = []
             order.append(key)
@@ -152,7 +181,7 @@ def transform_summary(records: Records, mapping: Mapping[str, str], options) -> 
     groups: dict = {}
     order: list = []
     for row in records:
-        key = row.get(x_col)
+        key = group_key(row.get(x_col))
         if key not in groups:
             groups[key] = []
             order.append(key)
@@ -176,8 +205,14 @@ def transform_lm(records: Records, mapping: Mapping[str, str], options) -> Trans
     """Ordinary least-squares fit; emits the fitted line over the x range."""
     x_col, y_col = mapping["x_var"], mapping["y_var"]
     xs, ys = _zip_xy(records, x_col, y_col)
+    finite = [(x, y) for x, y in zip(xs, ys) if math.isfinite(x) and math.isfinite(y)]
+    xs, ys = [x for x, _ in finite], [y for _, y in finite]
     if len(xs) < 2:
-        return records, _meta("lm", note="insufficient data")
+        warnings.warn(
+            "transform_lm requires at least 2 data points; returning empty.",
+            UserWarning, stacklevel=2,
+        )
+        return [], _meta("lm", sourceKeys=[], derivedFrom="input_rows")
     n = len(xs)
     mean_x, mean_y = _mean(xs), _mean(ys)
     sxx = sum((x - mean_x) ** 2 for x in xs)
@@ -225,7 +260,7 @@ def transform_quantiles(records: Records, mapping: Mapping[str, str], options) -
     groups: dict = {}
     order: list = []
     for row in records:
-        key = row.get(x_col)
+        key = group_key(row.get(x_col))
         if key not in groups:
             groups[key] = []
             order.append(key)
@@ -276,7 +311,7 @@ def transform_quantile_dots(records: Records, mapping: Mapping[str, str], option
     source_keys: dict = {}
     order: list = []
     for index, row in enumerate(records, start=1):
-        key = row.get(x_col)
+        key = group_key(row.get(x_col))
         if key not in groups:
             groups[key] = []
             source_keys[key] = []
@@ -318,7 +353,7 @@ def transform_median(records: Records, mapping: Mapping[str, str], options) -> T
     groups: dict = {}
     order: list = []
     for row in records:
-        key = row.get(x_col)
+        key = group_key(row.get(x_col))
         if key not in groups:
             groups[key] = []
             order.append(key)
@@ -334,7 +369,7 @@ def transform_outliers(records: Records, mapping: Mapping[str, str], options) ->
     x_col, y_col = mapping["x_var"], mapping["y_var"]
     groups: dict = {}
     for row in records:
-        groups.setdefault(row.get(x_col), []).append(row)
+        groups.setdefault(group_key(row.get(x_col)), []).append(row)
     out = []
     for key, rows in groups.items():
         ys = [r.get(y_col) for r in rows if isinstance(r.get(y_col), (int, float))]
@@ -358,7 +393,7 @@ def transform_ci(records: Records, mapping: Mapping[str, str], options) -> Trans
     groups: dict = {}
     order: list = []
     for row in records:
-        key = row.get(x_col)
+        key = group_key(row.get(x_col))
         if key not in groups:
             groups[key] = []
             order.append(key)
@@ -889,7 +924,7 @@ def transform_pairwise_test(records: Records, mapping: Mapping[str, str], option
     order = []
     raw_first = {}
     for row in records:
-        raw_g = row.get(x_col)
+        raw_g = group_key(row.get(x_col))
         if raw_g is None:
             continue
         g = str(raw_g)

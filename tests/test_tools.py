@@ -72,7 +72,7 @@ def test_validator_matches_shared_conformance_corpus():
         assert result["valid"] is item["valid"], item["name"]
         assert [error["code"] for error in result["errors"]] == item["error_codes"]
         suggestions = [error.get("suggestion", "") for error in result["errors"]]
-        for target in item["suggestion_targets"]:
+        for target in item.get("suggestion_targets", []):
             assert target in suggestions, item["name"]
 
 
