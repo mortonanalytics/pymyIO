@@ -1024,7 +1024,10 @@ class MyIO:
                 ))
             return self
 
-        if "group" in mapping:
+        # Radar and parallel are standalone types whose renderers draw every
+        # group from mapping["group"] inside one layer; splitting them breaks
+        # the standalone rule and renders the empty state (myIO #167).
+        if "group" in mapping and type not in ("radar", "parallel"):
             self._append_grouped_layers(
                 records, mapping, type, label, color, transform, options, layer_id,
             )

@@ -16,6 +16,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   theme's stroke colour; parallel dimension labels draw inside their axis
   groups; alasql 4.20.0. No Python API change.
 
+### Fixed
+
+- **Grouped radar and parallel charts render** (parity with myIO #167).
+  `add_layer(type="radar" | "parallel", mapping={..., "group": ...})` split the
+  data into one layer per group, which the engine rejects for standalone types,
+  so the chart showed "No data to display". Both now stay one layer with
+  `group` in the mapping, which their renderers already draw per group.
+
 ## [0.5.0] — 2026-10-03
 
 ### Changed
