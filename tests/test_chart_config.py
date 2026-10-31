@@ -349,3 +349,22 @@ def test_regression_separates_data_and_model_colors():
     ).to_config()["layers"]
     assert layers[0]["color"] == "#111111"
     assert layers[1]["color"] == "#222222"
+
+
+@pytest.mark.parametrize("chart_type,mapping", [
+    ("radar", {"axis": "a", "value": "v", "group": "g"}),
+    ("parallel", {"dimensions": ["v", "w"], "group": "g"}),
+])
+def test_grouped_radar_and_parallel_stay_one_layer(chart_type, mapping):
+    # Parity with myIO #167: the renderer draws every group from mapping group.
+    records = [
+        {"a": a, "v": v, "w": v * 2, "g": g}
+        for g in ("A", "B") for a, v in (("x", 1), ("y", 2), ("z", 3))
+    ]
+    layers = MyIO(records).add_layer(
+        type=chart_type, label="L", mapping=mapping,
+    ).to_config()["layers"]
+    assert len(layers) == 1
+    assert layers[0]["label"] == "L"
+    assert layers[0]["mapping"]["group"] == "g"
+    assert len(layers[0]["data"]) == 6
