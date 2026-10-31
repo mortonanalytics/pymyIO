@@ -4,6 +4,18 @@ All notable changes to pymyIO are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **Engine bump** (`b023b64` → `2ada461`): hovering lollipop, dumbbell, range
+  bar, candlestick, heatmap, waffle, beeswarm, quantile dots, bump, radar,
+  funnel, parallel, waterfall and sankey charts now shows a tooltip; regression
+  stats text and comparison brackets follow the theme's text colour and font;
+  whiskers, error bars, candlestick wicks and waterfall connectors follow the
+  theme's stroke colour; parallel dimension labels draw inside their axis
+  groups; alasql 4.20.0. No Python API change.
+
 ## [0.5.0] — 2026-10-03
 
 ### Changed
