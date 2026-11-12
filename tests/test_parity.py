@@ -32,6 +32,7 @@ SAMPLE = [
 
 def test_allowed_types_matches_r_canon():
     expected = {
+        "field",
         "line", "point", "bar", "hexbin", "treemap", "gauge", "donut", "area",
         "groupedBar", "histogram", "heatmap", "candlestick", "waterfall",
         "sankey", "boxplot", "violin", "ridgeline", "rangeBar", "text",

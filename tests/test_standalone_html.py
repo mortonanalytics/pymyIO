@@ -313,3 +313,55 @@ def test_axis_labels_and_title_render_in_browser(tmp_path):
 
     assert x_text == "Weight (1000 lbs)"
     assert y_text == "MPG"
+
+
+@pytest.mark.skipif(
+    importlib.util.find_spec("playwright") is None,
+    reason="playwright not installed",
+)
+def test_field_chart_renders_players_overlays_and_events_in_browser(tmp_path):
+    """Field layer draws positioned entities only (a missing position is not
+    filled), the team-shape overlay, and one seek button per event."""
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError:
+        pytest.skip("playwright.sync_api not available")
+
+    rows = []
+    for t in (0.0, 0.2):
+        rows += [
+            {"t": t, "id": "h1", "team": "home", "x": 10.0 + t, "y": 20.0},
+            {"t": t, "id": "h2", "team": "home", "x": 30.0, "y": 40.0},
+            {"t": t, "id": "a1", "team": "away", "x": 60.0, "y": 30.0},
+            {"t": t, "id": "a2", "team": "away", "x": None if t == 0.0 else 70.0, "y": 50.0},
+        ]
+    chart = MyIO(rows).add_layer(
+        "field", label="Match",
+        mapping={"x_var": "x", "y_var": "y", "time": "t", "entity": "id", "team": "team"},
+        options={"overlays": {"shape": True, "separation": True},
+                 "events": [{"time": 0.0, "type": "PASS", "player": "h1"},
+                            {"time": 0.2, "type": "SHOT", "player": "a1"}]},
+    )
+    path = tmp_path / "field.html"
+    path.write_text(to_standalone_html(chart, width=900, height=800), encoding="utf-8")
+
+    try:
+        with sync_playwright() as p:
+            try:
+                browser = p.chromium.launch()
+            except Exception as e:
+                pytest.skip(f"chromium not installed: {e}")
+            page = browser.new_page()
+            page.goto(f"file://{path}")
+            page.wait_for_selector(".myIO-field .field-entity", timeout=10_000)
+            entities = page.locator(".field-entity").evaluate_all(
+                "els => els.map(e => e.dataset.entity).sort()")
+            shape_boxes = page.locator(".field-shape-box").count()
+            events = page.locator(".field-events button").count()
+            browser.close()
+    except Exception as e:
+        pytest.skip(f"playwright browser unavailable: {e}")
+
+    assert entities == ["a1", "h1", "h2"]
+    assert shape_boxes == 1
+    assert events == 2

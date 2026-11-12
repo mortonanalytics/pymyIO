@@ -6,8 +6,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Field tracking chart** (parity with myIO #178). `add_layer(type="field")`
+  plays back player and ball positions on a pitch, with a trail for the
+  selected player, event seek buttons, and tactical overlays. Mapping needs
+  `x_var`, `y_var`, `time` (numeric seconds) and `entity`; `team`, `label` and
+  `kind` are optional. Options carry R's names: `pitchLength`, `pitchWidth`,
+  `maxGap`, `events` (a list of dicts or a data frame, coerced to records with
+  missing cells dropped), `overlays={"shape": bool, "separation": bool}`,
+  `minPlayers`, `excludeEntities` and `metricWindow=(start, end)`, validated as
+  in R's `validate_field_options()`. Missing positions serialize as `null` and
+  stay in place, so the engine never interpolates across them. The gallery has
+  a Sports tab on the Metrica Sports Sample Game 1 clip myIO uses.
+
 ### Changed
 
+- **Engine bump** (`2ada461` → `e05755f`): the `field` renderer and its
+  overlay metrics (myIO #169, #178); Shiny rollover input from donut and
+  treemap hover (myIO #187); alasql 4.22.0.
 - **Engine bump** (`b023b64` → `2ada461`): hovering lollipop, dumbbell, range
   bar, candlestick, heatmap, waffle, beeswarm, quantile dots, bump, radar,
   funnel, parallel, waterfall and sankey charts now shows a tooltip; regression

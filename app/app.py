@@ -7,6 +7,7 @@ the uncertainty-viz types (quantile_dots, fan) added with myIO PR #50 parity.
 
 from __future__ import annotations
 
+import json
 import math
 import random
 from datetime import date, timedelta
@@ -109,6 +110,13 @@ airquality = pd.DataFrame([
 
 OKABE_ITO = ["#4E79A7", "#F28E2B", "#E15759", "#76B7B2", "#59A14F",
              "#EDC948", "#B07AA1", "#FF9DA7", "#9C755F", "#BAB0AC"]
+
+# Metrica Sports sample clip (period 1, first 20 s) for the field tracking
+# chart; the same file the R gallery reads, from the vendored myIO checkout.
+FIELD_CLIP = json.loads(
+    (Path(__file__).resolve().parents[1] / "vendor" / "myIO" / "app" / "data"
+     / "field-tracking-data.json").read_text(encoding="utf-8")
+)
 
 
 def _seeded_uniform(seed: int, n: int, low: float, high: float) -> list[float]:
@@ -423,6 +431,47 @@ app_ui = ui.page_navbar(
         ),
         ui.nav_panel("Small Multiples",
             ui.div({"class": "chart-container"}, output_myio("facet_plot"))),
+    ),
+    ui.nav_panel("Sports",
+        ui.layout_columns(
+            ui.card(
+                ui.card_header("Field tracking"),
+                ui.card_body(output_myio("field_plot", height="1000px"), fillable=False),
+                ui.card_footer(
+                    {"class": "text-muted small"},
+                    FIELD_CLIP["source"]["attribution"], " ",
+                    ui.tags.a(FIELD_CLIP["source"]["name"], href=FIELD_CLIP["source"]["url"],
+                              target="_blank"),
+                    f". {FIELD_CLIP['source']['sampling']}",
+                ),
+                full_screen=True,
+            ),
+            ui.card(
+                ui.card_header("Tactical overlays"),
+                ui.input_checkbox_group(
+                    "field_overlays", None,
+                    choices={"shape": "Team shape", "separation": "Player separation"},
+                    selected=["shape", "separation"]),
+                ui.input_checkbox(
+                    "field_exclude_gk",
+                    "Leave goalkeepers (Home 11, Away 25) out of team shape", True),
+                ui.tags.ul(
+                    {"class": "small text-muted ps-3"},
+                    ui.tags.li(ui.tags.strong("Width"), " and ", ui.tags.strong("depth"),
+                               ": the across- and along-pitch spread of a team's outfield "
+                               "players at the current moment, in meters. The box on the "
+                               "pitch shows it."),
+                    ui.tags.li(ui.tags.strong("Separation"), ": select a player to see the "
+                               "distance to the nearest opponent and nearest teammate."),
+                    ui.tags.li(ui.tags.strong("Window"), ": use Set window start and Set "
+                               "window end under the pitch to get the mean, minimum and "
+                               "maximum width and depth over a stretch of play."),
+                    ui.tags.li("Players without a tracked position are left out, never "
+                               "placed or filled in."),
+                ),
+            ),
+            col_widths=[8, 4],
+        ),
     ),
     ui.nav_panel("Theme Demo",
         ui.layout_sidebar(
@@ -1233,6 +1282,32 @@ def server(input, output, session):
                        mapping={"x_var": "Sepal.Length", "y_var": "Sepal.Width"})
             .set_facet("Species", ncol=3)
             .set_axis_format(x_label="Sepal Length", y_label="Sepal Width")
+            .render()
+        )
+
+    # -- Sports --
+    @render_myio
+    def field_plot():
+        overlays = input.field_overlays()
+        return (
+            MyIO(FIELD_CLIP["tracking"], height="1000px")
+            .add_layer(
+                type="field", label="Metrica Sample Game 1 · opening 20 seconds",
+                mapping={"x_var": "x", "y_var": "y", "time": "time", "entity": "entity_id",
+                         "team": "team", "label": "label", "kind": "kind"},
+                options={
+                    "pitchLength": FIELD_CLIP["pitch"]["length"],
+                    "pitchWidth": FIELD_CLIP["pitch"]["width"],
+                    "maxGap": 0.5, "events": FIELD_CLIP["events"],
+                    "overlays": {"shape": "shape" in overlays,
+                                 "separation": "separation" in overlays},
+                    "excludeEntities": (["home-11", "away-25"]
+                                        if input.field_exclude_gk() else []),
+                },
+            )
+            .set_margin(top=8, bottom=8, left=8, right=8)
+            .suppress_axis(x_axis=True, y_axis=True)
+            .suppress_legend()
             .render()
         )
 
