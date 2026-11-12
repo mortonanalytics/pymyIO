@@ -70,6 +70,12 @@ is a valid value for `MyIO.add_layer(type=...)`.
 | `radar` | `axis`, `value` | Polar plot across named axes. |
 | `funnel` | `stage`, `value` | Sales / pipeline funnel. |
 
+## Sports
+
+| Type | Required mapping | Notes |
+|---|---|---|
+| `field` | `x_var`, `y_var`, `time`, `entity` | Tracking playback on a pitch; optional `team`, `label`, `kind`. `options={"events": ..., "overlays": {"shape": True, "separation": True}, "excludeEntities": [...], "minPlayers": 2, "metricWindow": (t0, t1)}`. Stands alone: no other layer types on the same chart. |
+
 ## Deferred / not-yet-rendering in 0.1.x
 
 See [Roadmap](roadmap.md) for landing targets.

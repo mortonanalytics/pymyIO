@@ -10,8 +10,11 @@ from __future__ import annotations
 
 import copy
 import math
+import numbers
 import time
 from typing import Any, Iterable, List, Mapping, Optional, Sequence, Tuple, Union
+
+import numpy as np
 
 from .transforms import get_transform, group_key, group_labels, order_group_values
 
@@ -22,6 +25,7 @@ OKABE_ITO_PALETTE: List[str] = [
 
 # Full canonical type list (matches R/util.R::ALLOWED_TYPES).
 ALLOWED_TYPES: List[str] = [
+    "field",
     "line", "point", "bar", "hexbin", "treemap", "gauge",
     "donut", "area", "groupedBar", "histogram", "heatmap",
     "candlestick", "waterfall", "sankey", "boxplot", "violin",
@@ -36,6 +40,7 @@ ALLOWED_TYPES: List[str] = [
 
 # Allowed (type, transform) combinations (matches R/util.R::VALID_COMBINATIONS).
 VALID_COMBINATIONS: dict = {
+    "field":           ("identity",),
     "line":            ("identity", "lm", "loess", "polynomial", "smooth", "lttb"),
     "point":           ("identity", "mean", "summary", "residuals"),
     "area":            ("identity", "ci"),
@@ -74,6 +79,7 @@ VALID_COMBINATIONS: dict = {
 # Compatibility groups for layer co-existence (matches R/util.R::COMPATIBILITY_GROUPS
 # and ::GROUP_MATRIX).
 COMPATIBILITY_GROUPS: dict = {
+    "field": "standalone-field",
     "line": "axes-continuous", "point": "axes-continuous", "area": "axes-continuous",
     "bar": "axes-categorical", "groupedBar": "axes-categorical",
     "histogram": "axes-binned", "heatmap": "axes-matrix",
@@ -96,6 +102,7 @@ COMPATIBILITY_GROUPS: dict = {
 }
 
 GROUP_MATRIX: dict = {
+    "standalone-field": (),
     "axes-continuous":  ("axes-continuous", "axes-categorical", "axes-binned"),
     "axes-categorical": ("axes-continuous", "axes-categorical"),
     "axes-binned":      ("axes-continuous", "axes-binned"),
@@ -113,6 +120,7 @@ GROUP_MATRIX: dict = {
 }
 
 _REQUIRED_MAPPING: dict = {
+    "field":           ("x_var", "y_var", "time", "entity"),
     "point":           ("x_var", "y_var"),
     "line":            ("x_var", "y_var"),
     "bar":             ("x_var", "y_var"),
@@ -192,6 +200,80 @@ def _validate_title(title: Any, caller: str) -> None:
     raise TypeError(
         f"{caller}(): `title` must be NULL or a single character string."
     )
+
+
+def _is_missing(value: Any) -> bool:
+    """None, NaN, or a pandas NA/NaT scalar."""
+    if value is None:
+        return True
+    if isinstance(value, float):
+        return math.isnan(value)
+    return type(value).__name__ in ("NAType", "NaTType")
+
+
+def _is_number(value: Any) -> bool:
+    return isinstance(value, numbers.Real) and not isinstance(value, (bool, np.bool_))
+
+
+def _validate_field_options(options: Optional[Mapping[str, Any]]) -> Optional[dict]:
+    """Port of R ``validate_field_options()``: field overlay options (myIO #169)
+    with JSON-stable shapes, and data-frame ``events`` coerced to records."""
+    if options is None:
+        return None
+    options = dict(options)
+
+    overlays = options.get("overlays")
+    if overlays is not None:
+        if (not isinstance(overlays, Mapping) or not overlays
+                or not all(k in ("shape", "separation") for k in overlays)
+                or not all(isinstance(v, (bool, np.bool_)) for v in overlays.values())):
+            raise ValueError(
+                "addIoLayer(): field option overlays must be a named list of "
+                "TRUE/FALSE values for shape and separation."
+            )
+        options["overlays"] = {k: bool(v) for k, v in overlays.items()}
+
+    min_players = options.get("minPlayers")
+    if min_players is not None:
+        if (not _is_number(min_players) or not math.isfinite(min_players)
+                or min_players < 2 or min_players != round(min_players)):
+            raise ValueError(
+                "addIoLayer(): field option minPlayers must be a whole number of at least 2."
+            )
+        options["minPlayers"] = int(min_players)
+
+    exclude = options.get("excludeEntities")
+    if exclude is not None:
+        ids = [exclude] if isinstance(exclude, (str, numbers.Real)) else list(exclude)
+        if not all(isinstance(v, str) or _is_number(v) for v in ids) or any(
+                _is_missing(v) for v in ids):
+            raise ValueError(
+                "addIoLayer(): field option excludeEntities must be a vector of entity ids."
+            )
+        # R's as.character(): whole numbers lose the trailing ".0".
+        options["excludeEntities"] = [
+            str(int(v)) if isinstance(v, float) and v.is_integer() else str(v) for v in ids
+        ]
+
+    window = options.get("metricWindow")
+    if window is not None:
+        bounds = None if isinstance(window, (str, numbers.Real)) else list(window)
+        if (bounds is None or len(bounds) != 2 or not all(_is_number(v) for v in bounds)
+                or not all(math.isfinite(v) for v in bounds) or bounds[0] > bounds[1]):
+            raise ValueError(
+                "addIoLayer(): field option metricWindow must be c(start, end) in "
+                "seconds with start <= end."
+            )
+        options["metricWindow"] = [float(v) for v in bounds]
+
+    events = options.get("events")
+    if events is not None and not isinstance(events, (list, tuple)):
+        # One record per row; missing cells are dropped so optional fields stay absent.
+        options["events"] = [
+            {k: v for k, v in row.items() if not _is_missing(v)}
+            for row in _to_records(events)
+        ]
+    return options
 
 
 # ---- data coercion ---------------------------------------------------------
@@ -970,6 +1052,23 @@ class MyIO:
             )
 
         cols = _columns(layer_data)
+        if type == "field":
+            if "group" in mapping:
+                raise ValueError("field uses team, not group, mapping.")
+            field_keys = [k for k in ("x_var", "y_var", "time", "entity", "team", "label", "kind")
+                          if k in mapping]
+            for key in field_keys:
+                col = mapping[key]
+                if not isinstance(col, str) or not col or (cols and col not in cols):
+                    raise ValueError(f"field mapping must name an existing column: {key}")
+            field_records = _to_records(layer_data)
+            for key in ("x_var", "y_var", "time"):
+                col = mapping[key]
+                if not all(_is_missing(row.get(col)) or _is_number(row.get(col))
+                           for row in field_records):
+                    raise ValueError("field coordinates and time must be numeric.")
+            options = _validate_field_options(options)
+
         for field in ("x_var", "y_var", "group", "value", "level_1", "level_2",
                       "open", "high", "low", "close", "source", "target", "date",
                       "time", "status", "category", "stage", "axis"):
@@ -994,6 +1093,12 @@ class MyIO:
         records = _to_records(layer_data)
         for i, row in enumerate(records, start=1):
             row.setdefault("_source_key", f"row_{i}")
+            if type == "field":
+                # Missing observations stay in place as null: dropping the row
+                # would let the engine interpolate across it, which fills it.
+                for key, value in row.items():
+                    if _is_missing(value):
+                        row[key] = None
 
         if type in COMPOSITE_TYPES:
             sub_specs = _expand_composite(type, records, mapping, label, color,
