@@ -406,3 +406,40 @@ def test_default_size_and_uncolored_donut_render_in_browser(tmp_path):
     assert float(width) > 800
     assert arcs == 2
     assert errors == []
+
+
+@pytest.mark.skipif(
+    importlib.util.find_spec("playwright") is None,
+    reason="playwright not installed",
+)
+def test_hover_outside_htmlwidgets_does_not_throw(tmp_path):
+    """#41: the engine's Shiny checks read HTMLWidgets, which pymyIO hosts do
+    not define. Hovering a point and a donut slice must not throw, and the
+    donut tooltip must show."""
+    from playwright.sync_api import sync_playwright
+
+    donut = MyIO([{"k": "a", "v": 3}, {"k": "b", "v": 5}]).add_layer(
+        "donut", label="d", mapping={"x_var": "k", "y_var": "v"})
+    for name, chart in {"point.html": _point_chart(), "donut.html": donut}.items():
+        (tmp_path / name).write_text(to_standalone_html(chart, width=600, height=400),
+                                     encoding="utf-8")
+
+    with sync_playwright() as p:
+        try:
+            browser = p.chromium.launch()
+        except Exception as e:  # pragma: no cover - environment-dependent
+            pytest.skip(f"chromium not installed: {e}")
+        page = browser.new_page()
+        errors: list = []
+        page.on("pageerror", lambda e: errors.append(str(e)))
+        page.goto(f"file://{tmp_path / 'point.html'}")
+        page.wait_for_selector("[class^=tag-point-]", timeout=10_000)
+        page.locator("[class^=tag-point-]").first.hover()
+        page.goto(f"file://{tmp_path / 'donut.html'}")
+        page.wait_for_selector(".donut", timeout=10_000)
+        page.locator(".donut").first.hover()
+        title = page.locator(".toolTipTitle").first.text_content()
+        browser.close()
+
+    assert errors == []
+    assert title
