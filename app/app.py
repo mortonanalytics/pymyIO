@@ -24,7 +24,6 @@ from pymyio.mydar import (
     mydar_gps_view,
     mydar_iphone_cloud,
     mydar_iphone_walk,
-    mydar_plan_view,
     mydar_profile,
     mydar_profile_view,
     mydar_sigma_view,
@@ -135,6 +134,7 @@ FIELD_CLIP = json.loads(
 # myDAR walk demo: a real iPhone walk that ships with pymyIO, in local
 # coordinates (the same walk as the R gallery).
 MYDAR_WALK = mydar_iphone_walk()
+MYDAR_CLOUD = mydar_iphone_cloud()
 
 
 def _mydar_profile_line(bearing_deg: float, offset_m: float) -> dict:
@@ -509,32 +509,21 @@ app_ui = ui.page_navbar(
              "A real outdoor walk recorded with the myDAR iPhone app and processed with the "
              "myDAR CLI, shown in local coordinates only: meters from the walk's south-west "
              "corner, heights above the lowest ground cell. The 3D view draws 500,000 of the "
-             "walk's 887,038 points; switch it to 2D, or color it by class, height or sigma."),
+             "walk's 887,038 points; switch between 2D and 3D, the points and the phone's mesh, "
+             "and turn LiDAR, classes and the orthophoto on and off."),
         ui.navset_card_underline(
             ui.nav_panel("Map and profile",
-                ui.layout_columns(
-                    ui.card(ui.card_header("Point cloud"),
-                            ui.card_body(output_myio("mydar_cloud", height="560px"),
-                                         fillable=False, padding=0),
-                            full_screen=True),
-                    ui.card(ui.card_header("Plan view over the orthophoto"),
-                            ui.card_body(
-                                ui.input_checkbox(
-                                    "mydar_plan_points",
-                                    "Show class points (brush them to pick points on the profile)",
-                                    False),
-                                output_myio("mydar_plan", height="520px"),
-                                fillable=False),
-                            full_screen=True),
-                    col_widths=[7, 5],
-                ),
+                ui.card(ui.card_header("Map"),
+                        ui.card_body(output_myio("mydar_map", height="600px"),
+                                     fillable=False, padding=0),
+                        full_screen=True),
                 ui.card(
                     ui.card_header("Profile across the walk"),
                     ui.layout_columns(
                         ui.div(
                             ui.p({"class": "small text-muted"},
-                                 "Turn on class points on the plan view and brush an empty part "
-                                 "of it to find the same points here."),
+                                 "In the map's 2D view, use Select and drag a rectangle to find "
+                                 "the same points here."),
                             output_myio("mydar_profile_chart", height="380px")),
                         ui.div(
                             ui.input_slider("mydar_bearing", "Line bearing (degrees from north)",
@@ -1406,20 +1395,29 @@ def server(input, output, session):
         )
 
     # -- myDAR walk --
-    # Brushing the plan view highlights the same points (point_id) on the
-    # profile; the uncertainty and GPS charts share a time cursor.
+    # Selecting in the map's 2D view highlights the same points (point_id) on
+    # the profile; the uncertainty and GPS charts share a time cursor. Moving
+    # the line redraws the map (pymyIO does not yet update options in place).
+    @reactive.calc
+    def mydar_line():
+        return _mydar_profile_line(input.mydar_bearing(), input.mydar_offset())
+
     @reactive.calc
     def mydar_space():
-        line = _mydar_profile_line(input.mydar_bearing(), input.mydar_offset())
+        line = mydar_line()
         width = input.mydar_width()
         if len(mydar_profile(MYDAR_WALK, line["from"], line["to"], width)) == 0:
             raise ValueError("No points within the corridor here; widen it or move the line.")
-        return link_charts(
-            mydar_plan_view(MYDAR_WALK, profile=line, points=input.mydar_plan_points(),
-                            height="520px").set_brush(),
-            mydar_profile_view(MYDAR_WALK, line["from"], line["to"], width=width),
-            on="point_id", group="mydar_points",
-        )
+        chart = mydar_profile_view(MYDAR_WALK, line["from"], line["to"], width=width)
+        return link_charts(MyIO(), chart, on="point_id", group="mydar_points")[1]
+
+    # The map depends on the line only, so the corridor width does not resend
+    # the points.
+    @reactive.calc
+    def mydar_map_chart():
+        chart = mydar_cloud_view(MYDAR_WALK, points=MYDAR_CLOUD, profile=mydar_line(),
+                                 height="600px")
+        return link_charts(chart, MyIO(), on="point_id", group="mydar_points")[0]
 
     def mydar_time():
         # 400 px: the Quality tab is hidden when these first draw, and a hidden
@@ -1429,16 +1427,12 @@ def server(input, output, session):
                            on="t_s", group="mydar_time", cursor=True)
 
     @render_myio
-    def mydar_cloud():
-        return mydar_cloud_view(MYDAR_WALK, points=mydar_iphone_cloud(), height="560px").render()
-
-    @render_myio
-    def mydar_plan():
-        return mydar_space()[0].render()
+    def mydar_map():
+        return mydar_map_chart().render()
 
     @render_myio
     def mydar_profile_chart():
-        return mydar_space()[1].render()
+        return mydar_space().render()
 
     @render_myio
     def mydar_trajectory():

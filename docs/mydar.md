@@ -14,6 +14,7 @@ frames and plots them with the same functions as R-myIO.
 | `walk.copc.laz` | `points` | `read_mydar_points()` (laspy with lazrs) |
 | `terrain.tif` | `terrain` | `read_mydar_terrain()` (rasterio) |
 | `orthophoto.tif` | `orthophoto` | `read_mydar_orthophoto()` (rasterio) |
+| `walk.mesh.usdz` | `mesh` | `read_mydar_mesh()` (pyproj to put it in the walk's CRS) |
 | `walk.gpkg` | `track`, `track_points`, `gps_fixes`, `pins`, `features`, `accuracy` | `read_mydar_gpkg()` (pyogrio, shapely) |
 | `trajectory.csv` | `trajectory` | `read_mydar_trajectory()` |
 
@@ -39,7 +40,7 @@ only its pixels, with its extent in the same coordinates.
 ## The bundled walk
 
 `mydar_iphone_walk()` returns a real outdoor walk recorded with the myDAR
-iPhone app and processed with the myDAR CLI (autodar commit `a1388d8`): about
+iPhone app and processed with the myDAR CLI (autodar commit `5f3aeb4`): about
 50 seconds and 25 m of track. It is the same data R-myIO ships as
 `mydar_iphone_walk`, shown in local coordinates only. Its x and y were moved
 to meters from the walk's south-west corner and its heights to height above
@@ -64,18 +65,26 @@ line = {"from": (0, ym), "to": (22, ym)}  # a profile line across the track
 Each view returns a `MyIO` chart, so it displays in a notebook cell and takes
 the usual setters.
 
-### 3D point cloud
+### Map viewer (2D and 3D)
 
-The cloud in 3D, the way the myDAR app's Results screen shows it: drag to
-orbit, shift-drag to pan, scroll or pinch to zoom, or switch to 2D for a
-top-down plan with a scale bar. The chips color the points by camera color,
-class, height or sigma and turn the orthophoto under them on and off. The
-card gives the walk's two accuracy figures, Shape and Map, separately.
+One WebGL viewer, laid out like the myDAR app's Results map. 2D is the plan
+over the orthophoto with a scale bar. 3D is the point cloud with the
+orthophoto draped on the DEM, on a dark background; drag to orbit,
+shift-drag to pan, scroll or pinch to zoom. In 3D, Points / Mesh switches to
+the phone's scene mesh in its vertex colors. The chips turn LiDAR, Camera,
+Classes and Ortho on and off independently, and Photo / Height / Sigma sets
+the point color. This walk's camera band was withheld, so Camera is off with
+a note. The track is drawn as its uncertainty band, light to dark orange as
+the map-position uncertainty rises. The card gives the walk's two accuracy
+figures, Shape and Map, separately. In 2D, Select picks points by rectangle
+and sends their `point_id`s to linked charts.
 
 ```python
 from pymyio.mydar import mydar_cloud_view
 
-mydar_cloud_view(walk, points=mydar_iphone_cloud())
+mydar_cloud_view(walk, points=mydar_iphone_cloud(), profile=line)
+mydar_cloud_view(walk, mode="plan")           # start in 2D
+mydar_cloud_view(walk, surface="mesh")        # start on the mesh
 ```
 
 ### Plan view
@@ -139,9 +148,9 @@ shape figure within 5 m.
 ## All at once
 
 `mydar_dashboard()` lays out the views on one page in the app's order: the
-3D cloud and the plan view first, then the profile, then the quality charts.
-With `plan_points=True`, brushing the plan view lights up the same points on
-the profile. Hovering the uncertainty or GPS chart shows a cursor at the same
+map viewer first, with the profile line on it, then the profile, then the
+quality charts. Selecting points in the viewer's 2D mode lights up the same
+points on the profile. Hovering the uncertainty or GPS chart shows a cursor at the same
 moment on the other; the GPS chart appears when the walk has GPS residuals.
 
 ```python

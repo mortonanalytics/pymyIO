@@ -12,7 +12,7 @@ Optional extras:
 pip install 'pymyio[pandas]'   # if you haven't already installed pandas
 pip install 'pymyio[polars]'   # polars DataFrame support
 pip install 'pymyio[shiny]'    # Shiny-for-Python integration
-pip install 'pymyio[mydar]'    # myDAR walk readers: pandas, laspy[lazrs], rasterio, pyogrio, shapely
+pip install 'pymyio[mydar]'    # myDAR walk readers: pandas, laspy[lazrs], rasterio, pyogrio, shapely, pyproj
 ```
 
 The myDAR views and the bundled walk need only pandas; the readers need the

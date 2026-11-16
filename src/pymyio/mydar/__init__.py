@@ -2,7 +2,7 @@
 ``mydar_*_view()`` functions).
 
 The views and the bundled walk need pandas. The readers also need laspy
-(with lazrs), rasterio, pyogrio and shapely; install them all with
+(with lazrs), rasterio, pyogrio, shapely and pyproj; install them all with
 ``pip install 'pymyio[mydar]'``.
 """
 
@@ -18,6 +18,7 @@ from ._read import (
     MYDAR_CLASSES,
     MydarWalk,
     read_mydar_gpkg,
+    read_mydar_mesh,
     read_mydar_orthophoto,
     read_mydar_points,
     read_mydar_terrain,
@@ -57,6 +58,7 @@ __all__ = [
     "mydar_terrain_view",
     "mydar_trajectory_view",
     "read_mydar_gpkg",
+    "read_mydar_mesh",
     "read_mydar_orthophoto",
     "read_mydar_points",
     "read_mydar_terrain",

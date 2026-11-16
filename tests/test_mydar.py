@@ -9,6 +9,7 @@ import json
 import lzma
 import math
 import struct
+import zipfile
 from pathlib import Path
 
 import numpy as np
@@ -32,12 +33,13 @@ from pymyio.mydar import (  # noqa: E402
     mydar_sigma_view,
     mydar_terrain_view,
     mydar_trajectory_view,
+    read_mydar_mesh,
     read_mydar_points,
     read_mydar_trajectory,
     read_mydar_walk,
 )
 from pymyio.mydar._data import _read_cloud  # noqa: E402
-from pymyio.mydar._read import png_chunks  # noqa: E402
+from pymyio.mydar._read import _simplify_mesh, png_chunks  # noqa: E402
 from pymyio.mydar._views import _hillshade  # noqa: E402
 
 DATA = Path(__file__).resolve().parent.parent / "src" / "pymyio" / "mydar" / "data"
@@ -259,7 +261,18 @@ def test_bundled_walk_carries_no_location(walk):
     assert list(dict.fromkeys(png_chunks(walk.orthophoto["png"]))) == ["IHDR", "IDAT", "IEND"]
     assert all(abs(v) < 1000 for v in walk.orthophoto["extent"].values())
     meta = json.loads((DATA / "walk.json").read_text(encoding="utf-8"))
-    assert set(meta) == {"points_n_total", "terrain_cell_size", "orthophoto_extent", "orthophoto_size"}
+    assert set(meta) == {"points_n_total", "terrain_cell_size", "orthophoto_extent",
+                         "orthophoto_size", "mesh_n_triangles_total"}
+
+    # The mesh: local vertices, faces that index them, no geodetic origin.
+    assert set(walk.mesh) == {"vertices", "faces", "n_triangles_total"}
+    v = walk.mesh["vertices"]
+    assert list(v.columns) == ["x", "y", "z", "r", "g", "b"]
+    assert np.abs(v[["x", "y"]].to_numpy()).max() < 1000
+    assert np.abs(v["z"].to_numpy()).max() < 100
+    faces = walk.mesh["faces"]
+    assert faces.shape == (11_219, 3)
+    assert faces.min() >= 0 and faces.max() < len(v)
 
     # The bundled cloud file: local x/y/z in its header.
     raw = lzma.decompress((DATA / "mydar-iphone-walk-cloud.bin").read_bytes())
@@ -292,6 +305,72 @@ def test_cloud_file_format_decodes_within_its_quantization():
     np.testing.assert_allclose(back["sigma_m"], [1e-3, 10 ** (128 / 255 * 4 - 3), 10])
     assert list(back["class_name"]) == ["Ground", "Building", "Road"]
     assert list(back["source"]) == ["LiDAR", "LiDAR", "camera"]
+
+
+# A small USDA mesh the way the phone writes one: east-north-up meters about a
+# made-up test origin (not the walk's).
+def write_usda(path, points, faces, colors, frame="enu", origin=(45, -100, 1000)):
+    def fmt(m):
+        return ", ".join("(" + ", ".join(f"{v:g}" for v in row) + ")" for row in m)
+
+    path.write_text("\n".join([
+        "#usda 1.0", "(", "    customLayerData = {",
+        f'        string mydar_frame = "{frame}"',
+        "        double3 mydar_enu_origin = (" + ", ".join(str(v) for v in origin) + ")",
+        "    }", ")", 'def Mesh "Mesh"', "{",
+        "    int[] faceVertexCounts = [" + ", ".join("3" for _ in faces) + "]",
+        "    int[] faceVertexIndices = [" + ", ".join(str(i) for f in faces for i in f) + "]",
+        f"    point3f[] points = [{fmt(points)}]",
+        f"    color3f[] primvars:displayColor = [{fmt(colors)}]",
+        "}",
+    ]), encoding="utf-8")
+    return str(path)
+
+
+def test_read_mydar_mesh_reads_usda_and_converts_east_north_up_to_a_crs(tmp_path):
+    pts = [(0, 0, 0), (100, 0, 0), (0, 100, 0), (0, 0, 10)]
+    faces = [(0, 1, 2), (0, 1, 3)]
+    cols = [(1, 0, 0), (0, 1, 0), (0, 0, 1), (0.5, 0.5, 0.5)]
+    path = write_usda(tmp_path / "walk.usda", pts, faces, cols)
+
+    local = read_mydar_mesh(path)
+    np.testing.assert_allclose(local["vertices"][["x", "y", "z"]].to_numpy(), pts)
+    assert local["vertices"]["r"].tolist() == [255, 0, 0, 128]
+    assert local["faces"].tolist() == [list(f) for f in faces]
+
+    # The same file inside a USDZ (a zip).
+    usdz = tmp_path / "walk.mesh.usdz"
+    with zipfile.ZipFile(usdz, "w", zipfile.ZIP_STORED) as z:
+        z.write(path, "walk.usda")
+    assert read_mydar_mesh(str(usdz))["faces"].shape == (2, 3)
+
+    pytest.importorskip("pyproj")
+    geo = read_mydar_mesh(path, crs="EPSG:4326")["vertices"]
+    # The origin vertex is the origin; 100 m east raises longitude, north latitude.
+    assert geo["x"][0] == pytest.approx(-100, abs=1e-9)
+    assert geo["y"][0] == pytest.approx(45, abs=1e-9)
+    assert geo["z"][0] == pytest.approx(1000, abs=1e-6)
+    n45 = 6378137 / math.sqrt(1 - 0.00669438 * math.sin(math.pi / 4) ** 2)
+    assert geo["x"][1] + 100 == pytest.approx(100 / (n45 * math.cos(math.pi / 4)) * 180 / math.pi, rel=1e-3)
+    assert geo["y"][2] - 45 == pytest.approx(100 / 6367000 * 180 / math.pi, rel=1e-2)
+    assert geo["z"][3] == pytest.approx(1010, abs=1e-3)
+
+
+def test_mesh_simplification_keeps_the_triangle_budget_and_valid_indices():
+    gx, gy = np.meshgrid(np.arange(31), np.arange(31))
+    vertices = pd.DataFrame({"x": gx.ravel() * 0.1, "y": gy.ravel() * 0.1, "z": 0.0,
+                             "r": 10, "g": 20, "b": 30})
+
+    def idx(x, y):
+        return y * 31 + x
+
+    faces = np.array([tri for y in range(30) for x in range(30) for tri in (
+        (idx(x, y), idx(x + 1, y), idx(x + 1, y + 1)),
+        (idx(x, y), idx(x + 1, y + 1), idx(x, y + 1)))])
+    v, f = _simplify_mesh(vertices, faces, 400)
+    assert 50 < len(f) <= 400
+    assert f.min() >= 0 and f.max() < len(v)
+    assert set(v["g"]) == {20}
 
 
 # ---- views -----------------------------------------------------------------------
@@ -347,7 +426,7 @@ def test_views_build_the_expected_layers(walk):
     no_ortho.orthophoto = None
     assert "Ground" in layer_labels(mydar_plan_view(no_ortho))
     cap = next(layer for layer in plan.config["layers"] if layer["label"] == "Accuracy")
-    assert [row["text"] for row in cap["data"]] == ["Shape ±5.9 cm", "Map ±17 m"]
+    assert [row["text"] for row in cap["data"]] == ["Shape ±5.9 cm", "Map ±16.8 m"]
     track = next(layer for layer in plan.config["layers"] if layer["label"] == "Track")
     assert track["options"]["curveType"] == "linear" and track["options"]["showPoints"] is False
     assert plan.config["axes"]["xAxisLabel"] == "Easting from walk origin (m)"
@@ -390,12 +469,38 @@ def test_cloud_view_packs_the_cloud_with_ortho_track_and_accuracy_card(walk):
     assert o["n"] == len(walk.points)
     assert "rgb" in o
     assert (o["color"], o["mode"], o["pointSize"]) == ("class", "plan", 3)
-    assert o["caption"] == {"shape": "±5.9 cm", "shapeNote": "within 5 m · 5–15 m withheld",
-                            "map": "±17 m", "mapNote": "phone GPS"}
+    assert o["caption"] == {
+        "shape": "±5.9 cm", "shapeNote": "within 5 m · past 5 m withheld, over 15 cm",
+        "cameraNote": "Camera: withheld, its 95% error is over 15 cm.",
+        "map": "±16.8 m", "mapNote": "phone GPS"}
     assert o["ortho"]["src"].startswith("data:image/png;base64,")
     assert len(o["track"]) == len(walk.track)
     assert o["classNames"]["2"] == "Ground"
     assert "ortho" not in mydar_cloud_view(walk, ortho=False).config["layers"][0]["options"]
+
+    # The DEM grid for the drape, holding every DEM cell.
+    t = o["terrain"]
+    dem = np.frombuffer(base64.b64decode(t["z"]), "<f4")
+    assert len(dem) == t["cols"] * t["rows"]
+    assert np.isfinite(dem).sum() == len(walk.terrain)
+    assert t["dx"] == walk.terrain.attrs["cell_size"][0]
+    # The mesh, the point source and the selectable points.
+    assert (o["mesh"]["nv"], o["mesh"]["nf"]) == (len(walk.mesh["vertices"]), len(walk.mesh["faces"]))
+    assert (np.frombuffer(base64.b64decode(o["src"]), "u1") == 0).all()  # LiDAR only
+    assert o["selectable"]["ids"] == walk.points["point_id"].tolist()
+    # The band: one entry per track point, uncertainty scaled 0 to 1.
+    u = [entry[3] for entry in o["trackBand"]]
+    assert len(u) == int(np.isfinite(walk.track_points["map_95_m"]).sum())
+    assert (min(u), max(u)) == (0, 1)
+    ordered = walk.track_points.sort_values("t_s")["map_95_m"].to_numpy()
+    assert int(np.argmax(u)) == int(np.argmax(ordered))
+    p = mydar_cloud_view(walk, profile={"from": (0, 1), "to": (5, 6)},
+                         surface="mesh").config["layers"][0]["options"]
+    assert p["profile"] == [[0, 1], [5, 6]]
+    assert p["surface"] == "mesh"
+    assert "selectable" not in mydar_cloud_view(walk, selectable=False).config["layers"][0]["options"]
+    with pytest.raises(ValueError, match="surface"):
+        mydar_cloud_view(walk, surface="wire")
     with pytest.raises(ValueError, match="x, y and z"):
         mydar_cloud_view(walk, points=pd.DataFrame({"a": [1]}))
     with pytest.raises(ValueError, match="color"):
@@ -415,31 +520,32 @@ def key_columns(charts):
     return [(c.config["interactions"].get("linked") or {}).get("keyColumn") for c in charts]
 
 
-def test_dashboard_links_plan_and_profile_and_time_charts_only_with_gps(walk):
-    assert "Ground" not in layer_labels(mydar_dashboard(walk).charts[1])
-    dash = mydar_dashboard(walk, plan_points=True)
+def test_dashboard_leads_with_one_viewer_linked_to_the_profile(walk):
+    dash = mydar_dashboard(walk)
     assert isinstance(dash, MydarDashboard)
     charts = dash.charts
-    assert len(charts) == 8
+    # Map, profile, uncertainty, GPS, sigma, accuracy, terrain; no separate plan.
+    assert len(charts) == 7
     assert charts[0].config["layers"][0]["type"] == "pointcloud"
-    assert "Ground" in layer_labels(charts[1])
-    assert key_columns(charts).count("point_id") == 2
+    assert dash.sections[0] == ("Map", [(charts[0], True)])
+    assert not any("image" in layer_types(c) for c in charts)
+    assert "profile" in charts[0].config["layers"][0]["options"]
+    assert key_columns(charts)[:2] == ["point_id", "point_id"]
     assert key_columns(charts).count("t_s") == 2
-    assert charts[1].config["interactions"]["brush"]["enabled"] is True
     assert [heading for heading, _ in dash.sections] == ["Map", "Profile", "Quality"]
 
     no_gps = mydar_iphone_walk()
     no_gps.gps_fixes = no_gps.gps_fixes.iloc[0:0]
     charts = mydar_dashboard(no_gps).charts
-    assert len(charts) == 7
+    assert len(charts) == 6
     assert key_columns(charts).count("t_s") == 0
 
 
 def test_dashboard_page_holds_every_chart_and_the_engine_once(walk, tmp_path):
     dash = mydar_dashboard(walk)
     page = dash.to_html()
-    assert page.count('class="pymyio-chart"') == 8
-    assert page.count('type="application/json" id="pymyio-config-') == 8
+    assert page.count('class="pymyio-chart"') == 7
+    assert page.count('type="application/json" id="pymyio-config-') == 7
     assert page.count("myIOchart") >= 1
     path = dash.save(str(tmp_path / "walk.html"))
     assert Path(path).read_text(encoding="utf-8").startswith("<!doctype html>")
@@ -475,7 +581,7 @@ def test_dashboard_draws_the_cloud_and_every_svg_chart_in_a_browser(walk, tmp_pa
             raise
         pytest.skip(f"playwright browser unavailable: {e}")
     assert errors == []
-    assert charts_with_svg >= 7
+    assert charts_with_svg >= 6
     # A blank canvas compresses to a few hundred bytes of PNG; drawn points do not.
     assert len(pixels) > 20_000
 

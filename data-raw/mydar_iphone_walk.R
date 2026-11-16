@@ -5,7 +5,10 @@
 #   <table>.csv.gz  one per table (points, terrain, track, track_points,
 #                   gps_fixes, pins, accuracy, trajectory)
 #   orthophoto.png  the orthophoto bytes exactly as myIO ships them
-#   walk.json       points n_total, terrain cell_size, orthophoto extent/size
+#   mesh_vertices.csv.gz, mesh_faces.csv.gz
+#                   the scene mesh: vertex x, y, z, r, g, b and 0-based faces
+#   walk.json       points n_total, terrain cell_size, orthophoto extent/size,
+#                   mesh n_triangles_total
 #
 # The values are the ones myIO ships, unchanged: doubles are written with 17
 # significant digits so they read back bit for bit, and the script checks
@@ -62,6 +65,9 @@ for (name in c("points", "terrain", "track", "track_points", "gps_fixes", "pins"
   write_table(as.data.frame(walk[[name]]), name)
 }
 writeBin(walk$orthophoto$png, file.path(out, "orthophoto.png"))
+stopifnot(is.null(attr(walk$mesh, "origin")))
+write_table(walk$mesh$vertices, "mesh_vertices")
+write_table(as.data.frame(`colnames<-`(walk$mesh$faces, c("a", "b", "c"))), "mesh_faces")
 
 json_num <- function(v) paste0("[", paste(sprintf("%.17g", v), collapse = ", "), "]")
 writeLines(c(
@@ -69,7 +75,8 @@ writeLines(c(
   sprintf('  "points_n_total": %d,', as.integer(attr(walk$points, "n_total"))),
   sprintf('  "terrain_cell_size": %s,', json_num(attr(walk$terrain, "cell_size"))),
   sprintf('  "orthophoto_extent": %s,', json_num(unname(walk$orthophoto$extent))),
-  sprintf('  "orthophoto_size": %s', json_num(unname(walk$orthophoto$size))),
+  sprintf('  "orthophoto_size": %s,', json_num(unname(walk$orthophoto$size))),
+  sprintf('  "mesh_n_triangles_total": %d', as.integer(attr(walk$mesh, "n_triangles_total"))),
   "}"
 ), file.path(out, "walk.json"))
 
