@@ -1,6 +1,6 @@
 # Chart types
 
-pymyIO renders 34 chart types — the same set as R-myIO. Every `type` below
+pymyIO renders 40 chart types — the same set as R-myIO. Every `type` below
 is a valid value for `MyIO.add_layer(type=...)`.
 
 ## Basic
@@ -76,6 +76,31 @@ is a valid value for `MyIO.add_layer(type=...)`.
 |---|---|---|
 | `field` | `x_var`, `y_var`, `time`, `entity` | Tracking playback on a pitch; optional `team`, `label`, `kind`. `options={"events": ..., "overlays": {"shape": True, "separation": True}, "excludeEntities": [...], "minPlayers": 2, "metricWindow": (t0, t1)}`. Stands alone: no other layer types on the same chart. |
 
+## Maps and point clouds
+
+| Type | Required mapping | Notes |
+|---|---|---|
+| `raster` | `x_var`, `y_var`, `value` | A regular grid (e.g. a DEM) drawn as one image on continuous axes, so points and lines can sit on top. `x_var`/`y_var` are cell centers; an optional `shade` column (0-1) darkens cells, e.g. a hillshade. `options={"cellWidth": ..., "cellHeight": ..., "palette": "viridis" \| "cividis" \| "greys"}`; cell size defaults to the data's spacing. Hover a cell for its value. |
+| `image` | `x_var`, `y_var` | A picture stretched over its rows' x/y extent and drawn under every other layer, e.g. an orthophoto. `options={"src": "data:image/png;base64,..."}` or a web URL. |
+| `pointcloud` | `x_var`, `y_var`, `z_var` | Large point clouds drawn with WebGL in their own panel: drag to orbit, shift-drag to pan, scroll or pinch to zoom, double-click to reset, or switch to a top-down 2D plan. Optional `red`, `green`, `blue` (0-255), `class` and `sigma`; chips in the view color by RGB, class, height or sigma. The points are sent packed as binary, so hundreds of thousands draw smoothly. Options: `color`, `mode` (`"3d"` or `"plan"`), `pointSize`, `classColors`, `classNames`, `ortho` (`{"src", "extent", "z"}`), `track` (list of `[x, y, z]`), `caption` (`{"shape", "shapeNote", "map", "mapNote"}`). Stands alone. Not included in PNG/SVG export. |
+
+Pair `raster` and `image` with `.set_equal_aspect()` so a meter is the same
+length on screen on both axes:
+
+```python
+corners = [{"x": 0, "y": 0}, {"x": 20, "y": 15}]
+(MyIO()
+ .add_layer(type="image", label="Orthophoto", data=corners,
+            mapping={"x_var": "x", "y_var": "y"},
+            options={"src": "https://example.org/ortho.png"})
+ .set_equal_aspect())
+```
+
+Line layers also take `options={"curveType": "linear", "showPoints": False}`
+(straight segments, no vertex markers), and point layers take
+`options={"pointRadius": 2}`. The [myDAR walks](mydar.md) page builds all of
+these from a real walk.
+
 ## Deferred / not-yet-rendering in 0.1.x
 
 See [Roadmap](roadmap.md) for landing targets.
@@ -99,7 +124,8 @@ myIO groups layer types by axis style. Compatible groups can coexist on the
 same chart; incompatible ones raise at `add_layer()` time:
 
 - `axes-continuous`: `line`, `point`, `area`, `candlestick`, `rangeBar`,
-  `text`, `regression`, `bracket`, `comparison`, `qq`, `bump`, `survfit`
+  `text`, `regression`, `bracket`, `comparison`, `qq`, `bump`, `survfit`,
+  `raster`, `image`
 - `axes-categorical`: `bar`, `groupedBar`, `waterfall`, `boxplot`, `violin`,
   `lollipop`, `dumbbell`, `beeswarm`
 - `axes-binned`: `histogram`, `ridgeline`, `histogram_fit`
@@ -107,3 +133,4 @@ same chart; incompatible ones raise at `add_layer()` time:
 - `axes-hex`: `hexbin`
 - `standalone-flow`: `sankey`, `treemap`, `waffle`, `funnel`, `parallel`
 - `standalone-radial`: `donut`, `gauge`, `radar`
+- `standalone-pointcloud`: `pointcloud` (nothing else on the same chart)

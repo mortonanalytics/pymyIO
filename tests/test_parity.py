@@ -39,6 +39,7 @@ def test_allowed_types_matches_r_canon():
         "regression", "bracket", "comparison", "qq", "lollipop", "dumbbell",
         "waffle", "beeswarm", "bump", "radar", "funnel", "parallel",
         "survfit", "histogram_fit", "calendarHeatmap", "quantile_dots", "fan",
+        "raster", "image", "pointcloud",
     }
     assert set(ALLOWED_TYPES) == expected
 

@@ -31,6 +31,8 @@ EXPECTED_FORCE_INCLUDE = {
     "vendor/myIO/inst/htmlwidgets/lib/d3-hexbin.js": "pymyio/static/lib/d3-hexbin.js",
     "vendor/myIO/inst/htmlwidgets/lib/d3-sankey.min.js": "pymyio/static/lib/d3-sankey.min.js",
     "vendor/myIO/inst/myio-schema.json": "pymyio/myio-schema.json",
+    "vendor/myIO/inst/extdata/mydar-iphone-walk-cloud.bin":
+        "pymyio/mydar/data/mydar-iphone-walk-cloud.bin",
 }
 
 

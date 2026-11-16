@@ -18,6 +18,19 @@ import pymyio
 from shiny import App, reactive, render, ui
 
 from pymyio import MyIO, link_charts
+from pymyio.mydar import (
+    mydar_accuracy_view,
+    mydar_cloud_view,
+    mydar_gps_view,
+    mydar_iphone_cloud,
+    mydar_iphone_walk,
+    mydar_plan_view,
+    mydar_profile,
+    mydar_profile_view,
+    mydar_sigma_view,
+    mydar_terrain_view,
+    mydar_trajectory_view,
+)
 from pymyio.shiny import output_myio, reactive_brush, render_myio
 
 # shinywidgets serves the anywidget _esm as an inline blob, so widget.js's
@@ -117,6 +130,24 @@ FIELD_CLIP = json.loads(
     (Path(__file__).resolve().parents[1] / "vendor" / "myIO" / "app" / "data"
      / "field-tracking-data.json").read_text(encoding="utf-8")
 )
+
+
+# myDAR walk demo: a real iPhone walk that ships with pymyIO, in local
+# coordinates (the same walk as the R gallery).
+MYDAR_WALK = mydar_iphone_walk()
+
+
+def _mydar_profile_line(bearing_deg: float, offset_m: float) -> dict:
+    """A line through the track's midpoint at a bearing, shifted along the
+    track, long enough to span the points."""
+    track, pts = MYDAR_WALK.track, MYDAR_WALK.points
+    mid = ((track["x"].min() + track["x"].max()) / 2, (track["y"].min() + track["y"].max()) / 2)
+    b = math.radians(bearing_deg)
+    d = (math.sin(b), math.cos(b))
+    center = (mid[0] + d[1] * offset_m, mid[1] - d[0] * offset_m)
+    reach = float(((pts["x"] - center[0]) * d[0] + (pts["y"] - center[1]) * d[1]).abs().max())
+    return {"from": (center[0] - d[0] * reach, center[1] - d[1] * reach),
+            "to": (center[0] + d[0] * reach, center[1] + d[1] * reach)}
 
 
 def _seeded_uniform(seed: int, n: int, low: float, high: float) -> list[float]:
@@ -471,6 +502,69 @@ app_ui = ui.page_navbar(
                 ),
             ),
             col_widths=[8, 4],
+        ),
+    ),
+    ui.nav_panel("myDAR walk",
+        ui.p({"class": "text-muted mt-3"},
+             "A real outdoor walk recorded with the myDAR iPhone app and processed with the "
+             "myDAR CLI, shown in local coordinates only: meters from the walk's south-west "
+             "corner, heights above the lowest ground cell. The 3D view draws 500,000 of the "
+             "walk's 887,038 points; switch it to 2D, or color it by class, height or sigma."),
+        ui.navset_card_underline(
+            ui.nav_panel("Map and profile",
+                ui.layout_columns(
+                    ui.card(ui.card_header("Point cloud"),
+                            ui.card_body(output_myio("mydar_cloud", height="560px"),
+                                         fillable=False, padding=0),
+                            full_screen=True),
+                    ui.card(ui.card_header("Plan view over the orthophoto"),
+                            ui.card_body(
+                                ui.input_checkbox(
+                                    "mydar_plan_points",
+                                    "Show class points (brush them to pick points on the profile)",
+                                    False),
+                                output_myio("mydar_plan", height="520px"),
+                                fillable=False),
+                            full_screen=True),
+                    col_widths=[7, 5],
+                ),
+                ui.card(
+                    ui.card_header("Profile across the walk"),
+                    ui.layout_columns(
+                        ui.div(
+                            ui.p({"class": "small text-muted"},
+                                 "Turn on class points on the plan view and brush an empty part "
+                                 "of it to find the same points here."),
+                            output_myio("mydar_profile_chart", height="380px")),
+                        ui.div(
+                            ui.input_slider("mydar_bearing", "Line bearing (degrees from north)",
+                                            min=0, max=175, value=90, step=5, width="100%"),
+                            ui.input_slider("mydar_offset", "Shift along the track (m)",
+                                            min=-8, max=8, value=0, step=0.5, width="100%"),
+                            ui.input_slider("mydar_width", "Corridor width (m)",
+                                            min=0.1, max=2, value=0.5, step=0.1, width="100%")),
+                        col_widths=[9, 3],
+                    ),
+                ),
+            ),
+            ui.nav_panel("Quality",
+                ui.p({"class": "small text-muted mt-2"},
+                     "Hover either time chart to line up a moment on both."),
+                ui.layout_columns(
+                    ui.card(ui.card_header("Map position uncertainty"),
+                            ui.card_body(output_myio("mydar_trajectory", height="400px"), fillable=False)),
+                    ui.card(ui.card_header("GPS residuals"),
+                            ui.card_body(output_myio("mydar_gps", height="400px"), fillable=False)),
+                    ui.card(ui.card_header("Point sigma by source"),
+                            ui.card_body(output_myio("mydar_sigma", height="400px"), fillable=False)),
+                    ui.card(ui.card_header("Accuracy figures"),
+                            ui.card_body(output_myio("mydar_accuracy", height="400px"), fillable=False)),
+                    ui.card(ui.card_header("Terrain (DEM, hillshaded)"),
+                            ui.card_body(output_myio("mydar_terrain", height="420px"), fillable=False)),
+                    col_widths=[6, 6, 6, 6, 6],
+                ),
+            ),
+            id="mydar_tab",
         ),
     ),
     ui.nav_panel("Theme Demo",
@@ -1310,6 +1404,61 @@ def server(input, output, session):
             .suppress_legend()
             .render()
         )
+
+    # -- myDAR walk --
+    # Brushing the plan view highlights the same points (point_id) on the
+    # profile; the uncertainty and GPS charts share a time cursor.
+    @reactive.calc
+    def mydar_space():
+        line = _mydar_profile_line(input.mydar_bearing(), input.mydar_offset())
+        width = input.mydar_width()
+        if len(mydar_profile(MYDAR_WALK, line["from"], line["to"], width)) == 0:
+            raise ValueError("No points within the corridor here; widen it or move the line.")
+        return link_charts(
+            mydar_plan_view(MYDAR_WALK, profile=line, points=input.mydar_plan_points(),
+                            height="520px").set_brush(),
+            mydar_profile_view(MYDAR_WALK, line["from"], line["to"], width=width),
+            on="point_id", group="mydar_points",
+        )
+
+    def mydar_time():
+        # 400 px: the Quality tab is hidden when these first draw, and a hidden
+        # widget draws at 400 px tall.
+        return link_charts(mydar_trajectory_view(MYDAR_WALK, height="400px"),
+                           mydar_gps_view(MYDAR_WALK, height="400px"),
+                           on="t_s", group="mydar_time", cursor=True)
+
+    @render_myio
+    def mydar_cloud():
+        return mydar_cloud_view(MYDAR_WALK, points=mydar_iphone_cloud(), height="560px").render()
+
+    @render_myio
+    def mydar_plan():
+        return mydar_space()[0].render()
+
+    @render_myio
+    def mydar_profile_chart():
+        return mydar_space()[1].render()
+
+    @render_myio
+    def mydar_trajectory():
+        return mydar_time()[0].render()
+
+    @render_myio
+    def mydar_gps():
+        return mydar_time()[1].render()
+
+    @render_myio
+    def mydar_sigma():
+        return mydar_sigma_view(MYDAR_WALK, height="400px").render()
+
+    @render_myio
+    def mydar_accuracy():
+        return mydar_accuracy_view(MYDAR_WALK, height="400px").render()
+
+    @render_myio
+    def mydar_terrain():
+        return mydar_terrain_view(MYDAR_WALK, height="420px").render()
 
     @render_myio
     def theme_plot():

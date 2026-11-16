@@ -27,6 +27,7 @@ the same engine renders both.
 | `setToolTipOptions()` | `MyIO.set_tooltip_options()` |
 | `defineCategoricalAxis()` | `MyIO.define_categorical_axis()` |
 | `flipAxis()` | `MyIO.flip_axis()` |
+| `setEqualAspect()` | `MyIO.set_equal_aspect()` |
 | `suppressLegend()` | `MyIO.suppress_legend()` |
 | `suppressAxis()` | `MyIO.suppress_axis()` |
 
@@ -43,6 +44,20 @@ the same engine renders both.
 | `setToggle()` | `MyIO.set_toggle()` |
 | `setLinkedCursor()` | `MyIO.set_linked_cursor()` |
 | `dragPoints()` | `MyIO.drag_points()` |
+
+## myDAR walks
+
+All in `pymyio.mydar`. R's `from` argument is `from_` in Python, and the
+bundled walk is a function, so each call returns a fresh copy.
+
+| R export | Python equivalent |
+|---|---|
+| `read_mydar_walk()` | `read_mydar_walk()` → `MydarWalk` |
+| `read_mydar_points()`, `read_mydar_terrain()`, `read_mydar_orthophoto()`, `read_mydar_gpkg()`, `read_mydar_trajectory()` | same names |
+| `mydar_iphone_walk` (dataset) | `mydar_iphone_walk()` |
+| `mydar_iphone_cloud()` | `mydar_iphone_cloud()` |
+| `mydar_cloud_view()`, `mydar_plan_view()`, `mydar_orthophoto_view()`, `mydar_terrain_view()`, `mydar_profile()`, `mydar_profile_view()`, `mydar_trajectory_view()`, `mydar_gps_view()`, `mydar_sigma_view()`, `mydar_accuracy_view()` | same names |
+| `mydar_dashboard()` (htmltools tag list) | `mydar_dashboard()` → `MydarDashboard` (`.to_html()`, `.save()`, notebook display) |
 
 ## Shiny bindings
 

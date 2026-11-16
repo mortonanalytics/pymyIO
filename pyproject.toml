@@ -39,6 +39,13 @@ dependencies = [
 shiny = ["shinywidgets>=0.8.0", "shiny>=1.0"]
 pandas = ["pandas>=1.5"]
 polars = ["polars>=0.20"]
+mydar = [
+  "pandas>=1.5",
+  "laspy[lazrs]>=2.4",
+  "rasterio>=1.3",
+  "pyogrio>=0.7",
+  "shapely>=2.0",
+]
 dev = [
   "pytest>=7",
   "pytest-playwright>=0.5",
@@ -46,6 +53,10 @@ dev = [
   "shinywidgets>=0.8.0",
   "shiny>=1.0",
   "ruff>=0.4",
+  "laspy[lazrs]>=2.4",
+  "rasterio>=1.3",
+  "pyogrio>=0.7",
+  "shapely>=2.0",
 ]
 
 [project.urls]
@@ -69,6 +80,7 @@ exclude = [
   "src/pymyio/static/lib/d3.min.js",
   "src/pymyio/static/lib/d3-hexbin.js",
   "src/pymyio/static/lib/d3-sankey.min.js",
+  "src/pymyio/mydar/data/mydar-iphone-walk-cloud.bin",
 ]
 
 # Materialize the engine into the wheel by following the symlinks under
@@ -82,6 +94,7 @@ exclude = [
 "vendor/myIO/inst/htmlwidgets/lib/d3-hexbin.js"    = "pymyio/static/lib/d3-hexbin.js"
 "vendor/myIO/inst/htmlwidgets/lib/d3-sankey.min.js" = "pymyio/static/lib/d3-sankey.min.js"
 "vendor/myIO/inst/myio-schema.json"                = "pymyio/myio-schema.json"
+"vendor/myIO/inst/extdata/mydar-iphone-walk-cloud.bin" = "pymyio/mydar/data/mydar-iphone-walk-cloud.bin"
 
 # Sdist must include the submodule contents so wheels can be built from the
 # tarball alone (PyPI doesn't fetch git submodules).
@@ -90,6 +103,7 @@ include = [
   "src/pymyio",
   "vendor/myIO/inst/htmlwidgets",
   "vendor/myIO/inst/myio-schema.json",
+  "vendor/myIO/inst/extdata/mydar-iphone-walk-cloud.bin",
   "vendor/myIO/tests/fixtures/validate-conformance.json",
   "vendor/myIO/LICENSE",
   "tests",

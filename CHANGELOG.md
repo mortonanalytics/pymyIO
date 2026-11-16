@@ -8,6 +8,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **myDAR walks** (parity with myIO #201). New `pymyio.mydar` module:
+  - Readers: `read_mydar_walk()` returns a `MydarWalk`; the single-file
+    readers are `read_mydar_points()`, `read_mydar_terrain()`,
+    `read_mydar_orthophoto()`, `read_mydar_gpkg()` and
+    `read_mydar_trajectory()`. They need the new `pymyio[mydar]` extra
+    (pandas, laspy[lazrs], rasterio, pyogrio, shapely) and name it when a
+    package is missing. `local=True` moves every table to walk-local
+    coordinates by subtraction only. The orthophoto comes back as a PNG
+    holding only its pixels (IHDR, IDAT, IEND), with its extent.
+  - Views: `mydar_cloud_view()`, `mydar_plan_view()`,
+    `mydar_orthophoto_view()`, `mydar_terrain_view()`, `mydar_profile()` /
+    `mydar_profile_view()`, `mydar_trajectory_view()`, `mydar_gps_view()`,
+    `mydar_sigma_view()` and `mydar_accuracy_view()`. They build the same
+    layers and options as R, and need only pandas. R's `from` argument is
+    `from_`.
+  - `mydar_dashboard()` returns a `MydarDashboard`. It lays out the 3D cloud
+    and the plan view over the orthophoto first, then the profile, then the
+    quality charts, with the same plan-to-profile brushing and time cursor
+    as R. `.to_html()` and `.save()` write one self-contained page, and it
+    displays in a notebook.
+  - Data: `mydar_iphone_walk()` and `mydar_iphone_cloud()` return the real
+    iPhone walk myIO ships, in local coordinates only (no origin, no CRS, no
+    feature layers). The tables are converted from myIO's `.rda` by
+    `data-raw/mydar_iphone_walk.R` and read back bit for bit. The
+    500,000-point cloud is myIO's own `inst/extdata` file, which the wheel
+    includes from the submodule.
+  - The gallery has a "myDAR walk" tab, and there is a guide at
+    `docs/mydar.md` and an example at `examples/mydar_walk.py`.
+- **`raster`, `image` and `pointcloud` chart types** (myIO #201).
+  `pointcloud` packs its points into the layer options as base64 typed
+  arrays, byte for byte as R does, and stands alone. Mapped `raster`,
+  `image` and `pointcloud` columns must exist and be numeric, as in R.
+- **`MyIO.set_equal_aspect()`** (R `setEqualAspect()`): equal units per pixel
+  on x and y.
+- Line layers take `options={"curveType": "linear", "showPoints": False}`,
+  and point layers take `options={"pointRadius": ...}`. These are documented
+  in `docs/charts.md`.
+
 - **Field tracking chart** (parity with myIO #178). `add_layer(type="field")`
   plays back player and ball positions on a pitch, with a trail for the
   selected player, event seek buttons, and tactical overlays. Mapping needs
@@ -22,6 +60,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Engine bump** (`e05755f` → `6021ed7`): the `raster`, `image` and
+  `pointcloud` renderers, with regl loaded lazily; `setEqualAspect`; line
+  `curveType` / `showPoints` and point `pointRadius`. Continuous x axes now
+  keep tick labels level at every width, with about one tick per 70 px
+  instead of rotated labels below 550 px. This changes how numeric x axes
+  look on narrow charts. The inline legend wraps instead of drawing over the
+  x-axis title, and it leaves out image and text layers (myIO #201). The
+  range also includes `updateMyIOOptions()` (myIO #195); Python does not
+  expose it yet (#45).
 - **Engine bump** (`2ada461` → `e05755f`): the `field` renderer and its
   overlay metrics (myIO #169, #178); Shiny rollover input from donut and
   treemap hover (myIO #187); alasql 4.22.0.
