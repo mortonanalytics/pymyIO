@@ -5,7 +5,9 @@ from __future__ import annotations
 import importlib
 import math
 import os
+import re
 import struct
+import zipfile
 import zlib
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
@@ -31,6 +33,8 @@ class MydarWalk:
     ``points`` carries ``attrs["n_total"]`` (points in the file) and
     ``terrain`` carries ``attrs["cell_size"]`` (cell width and height).
     ``orthophoto`` is ``{"png": bytes, "extent": {...}, "size": {...}}``.
+    ``mesh`` is ``{"vertices": DataFrame (x, y, z, r, g, b), "faces": (n, 3)
+    array of 0-based vertex indices, "n_triangles_total": int}``.
     ``origin`` is the x/y/z subtracted by ``local=True``; its values are NaN
     when the origin is withheld, as in the bundled walk.
     """
@@ -45,6 +49,7 @@ class MydarWalk:
     accuracy: pd.DataFrame = field(default_factory=pd.DataFrame)
     trajectory: Optional[pd.DataFrame] = None
     orthophoto: Optional[Dict[str, Any]] = None
+    mesh: Optional[Dict[str, Any]] = None
     crs: Optional[str] = None
     origin: Dict[str, float] = field(default_factory=lambda: {"x": 0.0, "y": 0.0, "z": 0.0})
 
@@ -65,6 +70,8 @@ class MydarWalk:
             "  features:     " + (", ".join(self.features) if self.features else "none"),
             f"  trajectory:   {rows(self.trajectory)} poses",
         ]
+        if self.mesh is not None:
+            lines.append(f"  mesh:         {len(self.mesh['faces']):,} triangles")
         if self.orthophoto is not None:
             size = self.orthophoto["size"]
             lines.append(f"  orthophoto:   {size['width']:g} x {size['height']:g} px")
@@ -77,11 +84,12 @@ class MydarWalk:
 
 
 def read_mydar_walk(dir: str, max_points: float = 20000, max_cells: float = 40000,
-                    local: bool = True) -> MydarWalk:
+                    local: bool = True, max_triangles: int = 20000) -> MydarWalk:
     """Read a myDAR walk output folder.
 
     The folder holds ``walk.copc.laz`` (the point cloud), ``terrain.tif`` (the
-    DEM), ``orthophoto.tif``, ``walk.gpkg`` (track, GPS fixes, pins, features
+    DEM), ``orthophoto.tif``, ``walk.mesh.usdz`` (the scene mesh, put in the
+    walk's CRS; needs pyproj), ``walk.gpkg`` (track, GPS fixes, pins, features
     and the ``accuracy`` table) and ``trajectory.csv`` (the device poses).
     Walks recorded without LiDAR have no point cloud or DEM; those parts are
     ``None``.
@@ -114,6 +122,7 @@ def read_mydar_walk(dir: str, max_points: float = 20000, max_cells: float = 4000
     gpkg = read_mydar_gpkg(gpkg_path)
     laz, dem = file_in("walk.copc.laz"), file_in("terrain.tif")
     traj, ortho = file_in("trajectory.csv"), file_in("orthophoto.tif")
+    mesh = file_in("walk.mesh.usdz")
     accuracy = gpkg["accuracy"]
     crs = None
     if len(accuracy) > 0 and "crs" in accuracy.columns:
@@ -127,6 +136,8 @@ def read_mydar_walk(dir: str, max_points: float = 20000, max_cells: float = 4000
         crs=crs,
         **gpkg,
     )
+    if mesh:
+        walk.mesh = read_mydar_mesh(mesh, crs=crs, max_triangles=max_triangles)
     if local:
         _shift_local(walk)
     return walk
@@ -283,6 +294,58 @@ def read_mydar_gpkg(path: str) -> Dict[str, Any]:
     }
 
 
+def read_mydar_mesh(path: str, crs: Optional[str] = None,
+                    max_triangles: int = 20000) -> Dict[str, Any]:
+    """Read a walk's ``walk.mesh.usdz`` scene mesh (one USDA layer).
+
+    Returns ``{"vertices", "faces", "n_triangles_total"}``: vertices with
+    ``x``, ``y``, ``z`` and ``r``, ``g``, ``b`` (0-255), and faces as an
+    (n, 3) array of 0-based vertex indices. The phone writes vertices in
+    meters east, north and up of a geodetic origin; with ``crs`` (e.g. the
+    walk's project CRS) each vertex is converted through WGS84 latitude,
+    longitude and ellipsoidal height into that CRS (needs pyproj), so it lines
+    up with the point cloud. A mesh over ``max_triangles`` is simplified by
+    merging vertices that share a grid cell (mean position and color), using
+    the smallest cell that fits.
+    """
+    _check_file(path, "read_mydar_mesh")
+    usda = _usdz_text(path)
+    frame = re.search(r'(?:mydar|autodar)_frame = "([a-z]+)"', usda)
+    frame = frame.group(1) if frame else "local"
+
+    def num(pattern: str) -> np.ndarray:
+        m = re.search(pattern + r" = \[([^\]]*)\]", usda)
+        if m is None:
+            raise ValueError(f"read_mydar_mesh(): {path} has no {pattern.replace(chr(92), '')}.")
+        body = re.sub(r"[()]", "", m.group(1))
+        return np.array([float(v) for v in re.split(r",\s*", body.strip()) if v], dtype=np.float64)
+
+    xyz = num(r"point3f\[\] points").reshape(-1, 3)
+    rgb = num(r"color3f\[\] primvars:displayColor").reshape(-1, 3)
+    if (num(r"int\[\] faceVertexCounts") != 3).any():
+        raise ValueError("read_mydar_mesh(): only triangle meshes are supported.")
+    faces = num(r"int\[\] faceVertexIndices").astype(np.int64).reshape(-1, 3)
+
+    if crs is not None and frame == "enu":
+        pyproj = _require("pyproj", "read_mydar_mesh")
+        o = re.search(r"(?:mydar|autodar)_enu_origin = \(([^)]*)\)", usda)
+        lat0, lon0, h0 = (float(v) for v in o.group(1).split(","))
+        lat, lon, h = _enu_to_geodetic(xyz, lat0, lon0, h0)
+        tf = pyproj.Transformer.from_crs("EPSG:4326", crs, always_xy=True)
+        x, y = tf.transform(lon, lat)
+        xyz = np.column_stack([x, y, h])
+
+    def byte(v: np.ndarray) -> np.ndarray:
+        return np.round(np.clip(v, 0, 1) * 255).astype(np.int64)
+
+    vertices = pd.DataFrame({"x": xyz[:, 0], "y": xyz[:, 1], "z": xyz[:, 2],
+                             "r": byte(rgb[:, 0]), "g": byte(rgb[:, 1]), "b": byte(rgb[:, 2])})
+    n_total = len(faces)
+    if n_total > max_triangles:
+        vertices, faces = _simplify_mesh(vertices, faces, max_triangles)
+    return {"vertices": vertices, "faces": faces, "n_triangles_total": n_total}
+
+
 def read_mydar_trajectory(path: str) -> pd.DataFrame:
     """Read a walk's ``trajectory.csv``; adds ``t_s``, seconds from the first pose."""
     _check_file(path, "read_mydar_trajectory")
@@ -367,8 +430,79 @@ def _vertices(attrs: pd.DataFrame, geoms: np.ndarray, shapely) -> pd.DataFrame:
     return out
 
 
+def _usdz_text(path: str) -> str:
+    """The .usda text inside a USDZ (an uncompressed zip), or the file itself."""
+    if str(path).endswith(".usda"):
+        with open(path, encoding="utf-8") as fh:
+            return fh.read()
+    with zipfile.ZipFile(path) as z:
+        names = [n for n in z.namelist() if n.endswith(".usda")]
+        if not names:
+            raise ValueError(f"read_mydar_mesh(): {path} holds no .usda layer.")
+        return z.read(names[0]).decode("utf-8")
+
+
+def _enu_to_geodetic(enu: np.ndarray, lat0: float, lon0: float, h0: float):
+    """East/north/up meters about a WGS84 point -> latitude, longitude
+    (degrees) and ellipsoidal height, the same way the myDAR core does it."""
+    a, f = 6378137.0, 1 / 298.257223563
+    e2 = f * (2 - f)
+    p0, l0 = math.radians(lat0), math.radians(lon0)
+    n0 = a / math.sqrt(1 - e2 * math.sin(p0) ** 2)
+    origin = np.array([(n0 + h0) * math.cos(p0) * math.cos(l0),
+                       (n0 + h0) * math.cos(p0) * math.sin(l0),
+                       (n0 * (1 - e2) + h0) * math.sin(p0)])
+    east = np.array([-math.sin(l0), math.cos(l0), 0.0])
+    north = np.array([-math.sin(p0) * math.cos(l0), -math.sin(p0) * math.sin(l0), math.cos(p0)])
+    up = np.array([math.cos(p0) * math.cos(l0), math.cos(p0) * math.sin(l0), math.sin(p0)])
+    ecef = origin + np.outer(enu[:, 0], east) + np.outer(enu[:, 1], north) + np.outer(enu[:, 2], up)
+    X, Y, Z = ecef[:, 0], ecef[:, 1], ecef[:, 2]
+    r = np.sqrt(X ** 2 + Y ** 2)
+    lon = np.arctan2(Y, X)
+    lat = np.arctan2(Z, r * (1 - e2))
+    h = np.zeros_like(lat)
+    for _ in range(6):
+        n = a / np.sqrt(1 - e2 * np.sin(lat) ** 2)
+        h = r / np.cos(lat) - n
+        lat = np.arctan2(Z, r * (1 - e2 * n / (n + h)))
+    return np.degrees(lat), np.degrees(lon), h
+
+
+def _simplify_mesh(vertices: pd.DataFrame, faces: np.ndarray, max_triangles: int):
+    """Vertex clustering: vertices in the same cubic cell merge (mean position
+    and color); triangles that collapse or repeat are dropped. The cell grows
+    until the mesh has at most ``max_triangles`` triangles."""
+    xyz = vertices[["x", "y", "z"]].to_numpy()
+    span = float(np.max(xyz.max(axis=0) - xyz.min(axis=0)))
+    cell = span / 2000
+    while True:
+        keys = np.floor(xyz / cell).astype(np.int64)
+        _, first, group = np.unique(keys, axis=0, return_index=True, return_inverse=True)
+        # Number groups in order of first appearance, as R's match(key, unique(key)).
+        order = np.argsort(np.argsort(first))
+        group = order[group.ravel()]
+        f = group[faces]
+        ok = (f[:, 0] != f[:, 1]) & (f[:, 1] != f[:, 2]) & (f[:, 0] != f[:, 2])
+        f = f[ok]
+        _, uniq = np.unique(np.sort(f, axis=1), axis=0, return_index=True)
+        f = f[np.sort(uniq)]
+        if len(f) <= max_triangles:
+            break
+        cell *= 1.25
+    agg = vertices.groupby(group).mean()
+    out = pd.DataFrame({"x": agg["x"], "y": agg["y"], "z": agg["z"]})
+    for c in ("r", "g", "b"):
+        out[c] = np.round(agg[c]).astype(np.int64)
+    used = np.unique(f)
+    renumber = np.full(len(out), -1, dtype=np.int64)
+    renumber[used] = np.arange(len(used))
+    return out.iloc[used].reset_index(drop=True), renumber[f]
+
+
 def _shift_local(walk: MydarWalk) -> None:
     tables = [getattr(walk, name) for name in _SPATIAL] + list(walk.features.values())
+    if walk.mesh is not None:
+        tables.append(walk.mesh["vertices"])
     xs = [df["x"].to_numpy() for df in tables if df is not None and len(df) > 0]
     ys = [df["y"].to_numpy() for df in tables if df is not None and len(df) > 0]
     if not xs or not np.isfinite(np.concatenate(xs)).any():
@@ -407,6 +541,8 @@ def _shift_local(walk: MydarWalk) -> None:
         }
     for name in _SPATIAL:
         setattr(walk, name, shift(getattr(walk, name)))
+    if walk.mesh is not None:
+        walk.mesh = dict(walk.mesh, vertices=shift(walk.mesh["vertices"]))
     walk.features = {name: shift(df) for name, df in walk.features.items()}
     walk.origin = origin
 

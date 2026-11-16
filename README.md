@@ -141,9 +141,10 @@ live Python kernel.
 ## myDAR walks
 
 `pymyio.mydar` reads the folders the myDAR phone app produces (point cloud,
-DEM, orthophoto, GeoPackage, trajectory) and plots them: a WebGL 3D point
-cloud, a plan view over the orthophoto, terrain, a profile, and the quality
-charts, or all of them at once with `mydar_dashboard()`. It ships a real
+DEM, orthophoto, scene mesh, GeoPackage, trajectory) and plots them: one
+WebGL map viewer (2D plan over the orthophoto, or 3D with the orthophoto
+draped on the DEM, the mesh and the track's uncertainty band), terrain, a
+profile, and the quality charts, or all of them at once with `mydar_dashboard()`. It ships a real
 iPhone walk in local coordinates to try it on:
 
 ```python

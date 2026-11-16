@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 import numpy as np
 import pandas as pd
 
-from ..chart import MyIO, link_charts
+from ..chart import MyIO, link_charts, pointcloud_mesh, pointcloud_terrain
 from ._read import MYDAR_CLASSES, MydarWalk, _check_flag
 
 Line = Dict[str, np.ndarray]
@@ -209,17 +209,32 @@ def mydar_gps_view(walk: MydarWalk, height: str = "320px") -> MyIO:
 
 def mydar_cloud_view(walk: MydarWalk, points: Optional[pd.DataFrame] = None, color: str = "rgb",
                      mode: str = "3d", point_size: float = 2, ortho: bool = True,
+                     profile: Optional[Mapping[str, Sequence[float]]] = None,
+                     selectable: bool = True, surface: str = "points",
                      height: str = "560px") -> MyIO:
-    """3D view of the walk's point cloud, drawn with WebGL (``pointcloud``).
+    """Map view of the walk in 2D and 3D: one WebGL viewer (``pointcloud``).
 
-    Orbit, pan and zoom in 3D, or switch to a top-down 2D plan. Points can be
-    colored by camera color (``"rgb"``), ``"class"``, ``"height"`` or
-    ``"sigma"``, with the orthophoto under them and the track over them; the
-    walk's Shape and Map accuracy figures sit in a card on the view.
+    Laid out like the myDAR app's Results map:
+
+    - a 2D / 3D switch on one canvas. 2D is the plan over the orthophoto with
+      a scale bar; 3D is the cloud with the orthophoto draped on the DEM, so
+      imagery and points line up in one scene.
+    - layer chips that switch on and off independently: LiDAR, Camera (when
+      the walk has camera points), Classes and Ortho; and a Photo / Height /
+      Sigma choice of point color.
+    - in 3D, a Points / Mesh switch when the walk has a mesh (``surface`` sets
+      the start), drawn in its vertex colors.
+    - the track with its uncertainty band (light to dark orange as the
+      map-position uncertainty rises), the ``profile`` line
+      (``{"from": (x, y), "to": (x, y)}``) and the accuracy card.
+    - in 2D, a Select tool (``selectable``): the rectangle's ``walk.points``
+      are sent on ``point_id`` to linked charts, e.g. the profile.
+
     ``points`` defaults to ``walk.points``; pass :func:`mydar_iphone_cloud`
     or ``read_mydar_points(path, max_points=math.inf)`` for a denser cloud.
-    Controls: drag to rotate (2D: pan), shift-drag or right-drag to pan,
-    scroll or pinch to zoom, double-click to reset.
+    ``mode`` is ``"3d"`` or ``"plan"`` (2D). Controls: drag to rotate (2D:
+    pan), shift-drag or right-drag to pan, scroll or pinch to zoom,
+    double-click to reset.
     """
     _check_walk(walk, "mydar_cloud_view")
     pts = _need(walk, "points", "mydar_cloud_view") if points is None else points
@@ -230,7 +245,10 @@ def mydar_cloud_view(walk: MydarWalk, points: Optional[pd.DataFrame] = None, col
         raise ValueError("mydar_cloud_view(): `color` must be one of 'rgb', 'class', 'height', 'sigma'.")
     if mode not in ("3d", "plan"):
         raise ValueError("mydar_cloud_view(): `mode` must be '3d' or 'plan'.")
+    if surface not in ("points", "mesh"):
+        raise ValueError("mydar_cloud_view(): `surface` must be 'points' or 'mesh'.")
     _check_flag(ortho, "ortho", "mydar_cloud_view")
+    _check_flag(selectable, "selectable", "mydar_cloud_view")
     if not _is_real(point_size) or not math.isfinite(point_size) or point_size <= 0:
         raise ValueError("mydar_cloud_view(): `point_size` must be a single positive number.")
 
@@ -241,13 +259,15 @@ def mydar_cloud_view(walk: MydarWalk, points: Optional[pd.DataFrame] = None, col
         mapping["class"] = "class"
     if "sigma_m" in pts.columns:
         mapping["sigma"] = "sigma_m"
+    if "source" in pts.columns:
+        mapping["source"] = "source"
     if color == "rgb" and "red" not in mapping:
         color = "class"
 
     present_codes = set(pts["class"].unique()) if "class" in pts.columns else set()
     present = MYDAR_CLASSES[MYDAR_CLASSES["class"].isin(present_codes)]
     options: Dict[str, Any] = {
-        "color": color, "mode": mode, "pointSize": point_size,
+        "color": color, "mode": mode, "pointSize": point_size, "surface": surface,
         "classColors": {str(c): col for c, col in zip(present["class"], present["color"])},
         "classNames": {str(c): n for c, n in zip(present["class"], present["class_name"])},
         "caption": _caption(walk),
@@ -256,6 +276,13 @@ def mydar_cloud_view(walk: MydarWalk, points: Optional[pd.DataFrame] = None, col
         tr = walk.track[np.isfinite(walk.track["x"]) & np.isfinite(walk.track["z"])]
         options["track"] = [[float(x), float(y), float(z)]
                             for x, y, z in zip(tr["x"], tr["y"], tr["z"])]
+    band = _track_band(walk)
+    if band is not None:
+        options["trackBand"] = band
+    if walk.terrain is not None and len(walk.terrain) > 0:
+        options["terrain"] = pointcloud_terrain(walk.terrain)
+    if walk.mesh is not None and len(walk.mesh["faces"]) > 0:
+        options["mesh"] = pointcloud_mesh(walk.mesh["vertices"], walk.mesh["faces"])
     if ortho and walk.orthophoto is not None:
         ground_z = walk.terrain["z"] if walk.terrain is not None else pts["z"]
         e = walk.orthophoto["extent"]
@@ -263,6 +290,16 @@ def mydar_cloud_view(walk: MydarWalk, points: Optional[pd.DataFrame] = None, col
             "src": _png_data_url(walk.orthophoto["png"]),
             "extent": [e["xmin"], e["xmax"], e["ymin"], e["ymax"]],
             "z": float(np.nanmin(ground_z)) - 0.02,
+        }
+    if profile is not None:
+        line = _check_line(profile.get("from"), profile.get("to"), "mydar_cloud_view")
+        options["profile"] = [line["from"].tolist(), line["to"].tolist()]
+    if selectable and walk.points is not None and "point_id" in walk.points.columns:
+        sp = walk.points
+        options["selectable"] = {
+            "key": "point_id", "ids": [int(i) for i in sp["point_id"]],
+            "x": np.round(sp["x"].to_numpy(dtype=float), 3).tolist(),
+            "y": np.round(sp["y"].to_numpy(dtype=float), 3).tolist(),
         }
 
     w = MyIO(height=height)
@@ -360,28 +397,27 @@ _DASHBOARD_CSS = (
 
 
 def mydar_dashboard(walk: MydarWalk, points: Optional[pd.DataFrame] = None,
-                    profile: Optional[Mapping[str, Sequence[float]]] = None, width: float = 0.5,
-                    plan_points: bool = False) -> MydarDashboard:
+                    profile: Optional[Mapping[str, Sequence[float]]] = None,
+                    width: float = 0.5) -> MydarDashboard:
     """Lay out a walk the way the myDAR app's Results screen does.
 
-    The 3D point cloud and the plan view over the orthophoto come first, both
-    captioned with the walk's Shape and Map accuracy, then the profile, then
-    the quality charts (map-position uncertainty, GPS residuals, point sigma,
-    accuracy figures, and the terrain when the walk has a DEM). With
-    ``plan_points=True`` the plan view shows the class points, and brushing
-    them highlights the same points on the profile. When the walk has GPS
-    residuals, the GPS chart shares a time cursor with the uncertainty chart.
-    ``profile`` defaults to a line across the track at its midpoint.
+    One map viewer first (:func:`mydar_cloud_view`: the 2D plan over the
+    orthophoto or the 3D cloud with the orthophoto draped on the DEM, with the
+    track's uncertainty band, the profile line and the Shape / Map accuracy
+    card), the profile below it, then the quality charts (map-position
+    uncertainty, GPS residuals, point sigma, accuracy figures, terrain). In
+    the viewer's 2D mode the Select tool picks points and the profile
+    highlights the same ones. When the walk has GPS residuals, the GPS chart
+    shares a time cursor with the uncertainty chart. ``profile`` defaults to a
+    line across the track at its midpoint.
     """
-    _check_flag(plan_points, "plan_points", "mydar_dashboard")
     if profile is None:
         line = _default_profile(walk)
     else:
         line = _check_line(profile.get("from"), profile.get("to"), "mydar_dashboard")
 
-    plan, prof = link_charts(
-        mydar_plan_view(walk, profile=line, points=plan_points or walk.orthophoto is None,
-                        height="520px").set_brush(),
+    viewer, prof = link_charts(
+        mydar_cloud_view(walk, points=points, profile=line, height="600px"),
         mydar_profile_view(walk, from_=line["from"], to=line["to"], width=width),
         on="point_id", group=f"mydar_points_{uuid.uuid4().hex[:8]}",
     )
@@ -400,7 +436,7 @@ def mydar_dashboard(walk: MydarWalk, points: Optional[pd.DataFrame] = None,
     if walk.terrain is not None:
         quality.append((mydar_terrain_view(walk), False))
     return MydarDashboard([
-        ("Map", [(mydar_cloud_view(walk, points=points, height="520px"), False), (plan, False)]),
+        ("Map", [(viewer, True)]),
         ("Profile", [(prof, True)]),
         ("Quality", quality),
     ])
@@ -622,8 +658,8 @@ def _add_orthophoto(w: MyIO, walk: MydarWalk) -> MyIO:
                        options={"src": _png_data_url(o["png"])})
 
 
-def _fixed(v: float, unit: str) -> str:
-    text = f"{v:.1f}" if v < 10 else f"{round(v):d}"
+def _fixed(v: float, unit: str, one_decimal_below: float = 10) -> str:
+    text = f"{v:.1f}" if v < one_decimal_below else f"{round(v):d}"
     return f"±{text} {unit}"
 
 
@@ -648,13 +684,15 @@ def _caption(walk: MydarWalk) -> Dict[str, str]:
         if math.isfinite(far):
             note += f" · {cm(far)} at 5–15 m"
         elif any(math.isfinite(v) for v in withheld):
-            note += " · 5–15 m withheld"
+            note += " · past 5 m withheld, over 15 cm"
+            out["cameraNote"] = "Camera: withheld, its 95% error is over 15 cm."
         out["shapeNote"] = note
     map_95 = num("map_95_m")
     if math.isfinite(map_95):
         pins = num("pins_used")
         has_pins = math.isfinite(pins) and pins > 0
-        out["map"] = cm(map_95) if has_pins and map_95 < 1 else _fixed(map_95, "m")
+        # As the app: one decimal below 100 m ("±16.8 m").
+        out["map"] = cm(map_95) if has_pins and map_95 < 1 else _fixed(map_95, "m", 100)
         basis = None
         if acc is not None and len(acc) > 0 and "map_basis" in acc.columns:
             value = acc["map_basis"].iloc[0]
@@ -677,6 +715,26 @@ def _add_caption(w: MyIO, walk: MydarWalk) -> MyIO:
     return w.add_layer(type="text", label="Accuracy", data=[{"text": t} for t in lines],
                        mapping={"x_var": "text", "y_var": "text", "label": "text"},
                        options={"position": "top-left"})
+
+
+def _track_band(walk: MydarWalk) -> Optional[List[List[float]]]:
+    """The track's uncertainty band for the viewer: track points as
+    [x, y, z, u], u the map-position 95% radius scaled to 0-1 over the walk
+    (0.5 everywhere when it does not change)."""
+    tp = walk.track_points
+    if tp is None or not {"x", "y", "map_95_m"} <= set(tp.columns):
+        return None
+    tp = tp[np.isfinite(tp["x"]) & np.isfinite(tp["y"]) & np.isfinite(tp["map_95_m"])]
+    if len(tp) < 2:
+        return None
+    if "t_s" in tp.columns:
+        tp = tp.sort_values("t_s", kind="stable")
+    m = tp["map_95_m"].to_numpy(dtype=float)
+    lo, hi = m.min(), m.max()
+    u = (m - lo) / (hi - lo) if hi > lo else np.full(len(m), 0.5)
+    z = tp["z"].to_numpy(dtype=float) if "z" in tp.columns else np.zeros(len(m))
+    return [[float(a), float(b), float(c), float(d)]
+            for a, b, c, d in zip(tp["x"], tp["y"], z, u)]
 
 
 def _css_size(v: Any) -> str:

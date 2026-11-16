@@ -53,7 +53,7 @@ bundled walk is a function, so each call returns a fresh copy.
 | R export | Python equivalent |
 |---|---|
 | `read_mydar_walk()` | `read_mydar_walk()` → `MydarWalk` |
-| `read_mydar_points()`, `read_mydar_terrain()`, `read_mydar_orthophoto()`, `read_mydar_gpkg()`, `read_mydar_trajectory()` | same names |
+| `read_mydar_points()`, `read_mydar_terrain()`, `read_mydar_orthophoto()`, `read_mydar_mesh()`, `read_mydar_gpkg()`, `read_mydar_trajectory()` | same names |
 | `mydar_iphone_walk` (dataset) | `mydar_iphone_walk()` |
 | `mydar_iphone_cloud()` | `mydar_iphone_cloud()` |
 | `mydar_cloud_view()`, `mydar_plan_view()`, `mydar_orthophoto_view()`, `mydar_terrain_view()`, `mydar_profile()`, `mydar_profile_view()`, `mydar_trajectory_view()`, `mydar_gps_view()`, `mydar_sigma_view()`, `mydar_accuracy_view()` | same names |

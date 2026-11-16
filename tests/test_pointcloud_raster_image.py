@@ -104,3 +104,29 @@ def test_pointcloud_accepts_a_pandas_frame():
     o = MyIO().add_layer(type="pointcloud", label="c", data=df, mapping=CLOUD_MAPPING).config["layers"][0]["options"]
     assert o["n"] == 3
     assert decode(o["cls"], "u1").tolist() == [2, 6, 11]
+
+
+def test_pointcloud_packs_point_source_a_dem_grid_and_a_mesh():
+    from pymyio.chart import pointcloud_mesh, pointcloud_terrain
+
+    data = [{"x": 0, "y": 0, "z": 0, "src": "LiDAR"}, {"x": 1, "y": 1, "z": 1, "src": "camera"}]
+    o = MyIO().add_layer(type="pointcloud", label="c", data=data,
+                         mapping={"x_var": "x", "y_var": "y", "z_var": "z", "source": "src"}
+                         ).config["layers"][0]["options"]
+    assert decode(o["src"], "u1").tolist() == [0, 1]
+
+    terrain = [{"x": 0, "y": 0, "z": 1}, {"x": 0.5, "y": 0, "z": 2}, {"x": 0, "y": 0.5, "z": 3}]
+    g = pointcloud_terrain(terrain, cell_size=[0.5, 0.5])
+    assert [g["cols"], g["rows"], g["x0"], g["y0"], g["dx"]] == [2, 2, 0, 0, 0.5]
+    z = decode(g["z"], "<f4")
+    assert z[:3].tolist() == [1, 2, 3] and np.isnan(z[3])
+
+    vertices = [{"x": 0, "y": 0, "z": 0, "r": 1, "g": 2, "b": 3},
+                {"x": 1, "y": 0, "z": 0, "r": 1, "g": 2, "b": 3},
+                {"x": 0, "y": 1, "z": 0, "r": 1, "g": 2, "b": 3}]
+    m = pointcloud_mesh(vertices, [[0, 1, 2]])
+    assert (m["nv"], m["nf"]) == (3, 1)
+    assert decode(m["faces"], "<u4").tolist() == [0, 1, 2]
+    assert decode(m["colors"], "u1").tolist() == [1, 2, 3] * 3
+    with pytest.raises(ValueError, match="0-based"):
+        pointcloud_mesh(vertices, [[0, 1, 3]])

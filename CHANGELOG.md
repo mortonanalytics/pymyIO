@@ -6,6 +6,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **One map viewer for myDAR walks** (parity with myIO #202, #203).
+  `mydar_cloud_view()` is now the walk's 2D and 3D map:
+  - 2D shows the plan over the orthophoto. 3D shows the cloud with the
+    orthophoto draped on the DEM, on the app's dark background.
+  - A Points / Mesh switch shows the phone's scene mesh.
+  - The LiDAR, Camera, Classes and Ortho chips work independently.
+  - The track is drawn as its uncertainty band.
+  - The new `profile` argument draws the profile line, and a 2D Select tool
+    sends `point_id`s to linked charts (`selectable`). `surface` sets the
+    starting 3D surface.
+- **Dashboard:** `mydar_dashboard()` leads with that one viewer, linked to the
+  profile, and drops the separate plan panel and its `plan_points` argument,
+  as R does. The gallery's myDAR tab does the same.
+- **`read_mydar_mesh()`** reads `walk.mesh.usdz`, and `read_mydar_walk()`
+  reads it as `walk.mesh` (`max_triangles`).
+  - With a CRS, the phone's east-north-up vertices are converted through
+    WGS84 into the walk's CRS. This needs pyproj, which is now in the
+    `mydar` extra.
+  - Larger meshes are simplified by vertex clustering.
+- **Data:** `mydar_iphone_walk()` now holds the walk's mesh (11,219
+  triangles), converted from myIO's rebuilt dataset (autodar `5f3aeb4`) in
+  local coordinates only. The other tables are unchanged.
+- **New `pointcloud` options:**
+  - mapping `source` packs a per-point source array (`src`);
+  - `pymyio.chart.pointcloud_terrain()` and `pointcloud_mesh()` pack the
+    `terrain` and `mesh` options;
+  - `trackBand`, `surface`, `profile`, `selectable` and `caption.cameraNote`
+    are passed through.
+
+### Changed
+
+- **Engine bump** (`6021ed7` → `0111d11`): the single myDAR viewer with
+  draped orthophoto, mesh, track band and Select (myIO #202). The 3D
+  background is dark, the profile line is clipped to the data, and the
+  phone's path is drawn only in 2D when the band is shown (myIO #203).
+- **Accuracy card wording follows the app:** map position keeps one decimal
+  below 100 m ("±16.8 m"), and a withheld camera band reads "past 5 m
+  withheld, over 15 cm".
+
 ## [0.6.0] — 2026-11-15
 
 ### Added

@@ -388,11 +388,70 @@ def _pointcloud_payload(data: DataFrameLike, mapping: Mapping[str, str]) -> dict
     cls = col("class")
     if cls is not None:
         out["cls"] = b64(byte(cls[keep]), "u1")
+    if mapping.get("source") is not None:
+        # "camera" or 1 is camera; anything else is LiDAR.
+        if hasattr(data, "columns"):
+            raw = list(data[mapping["source"]])
+        else:
+            raw = [row.get(mapping["source"]) for row in _to_records(data)]
+        camera = np.array([v == "camera" or (_is_number(v) and v == 1) for v in raw])
+        out["src"] = b64(camera[keep], "u1")
     sigma = col("sigma")
     if sigma is not None:
         s = np.maximum(sigma[keep], 1e-3)
         out["sigma"] = b64(byte((np.log10(s) + 3) / 4 * 255), "u1")
     return out
+
+
+def pointcloud_terrain(terrain: DataFrameLike,
+                       cell_size: Optional[Sequence[float]] = None) -> dict:
+    """Pack a regular grid of cell centers as the ``pointcloud`` ``terrain`` option.
+
+    ``terrain`` has columns ``x``, ``y`` (cell centers) and ``z``. Returns
+    ``{cols, rows, x0, y0, dx, dy, z}`` with ``z`` as base64 Float32 heights
+    in row-major order from the first cell center, y increasing, NaN where
+    empty. ``cell_size`` defaults to ``terrain.attrs["cell_size"]``, else the
+    data's spacing. The viewer drapes the orthophoto on it in 3D.
+    """
+    if cell_size is None:
+        cell_size = getattr(terrain, "attrs", {}).get("cell_size")
+    x = _numeric_column(terrain, "x", "pointcloud")
+    y = _numeric_column(terrain, "y", "pointcloud")
+    z = _numeric_column(terrain, "z", "pointcloud")
+    if cell_size is None or len(cell_size) != 2:
+        cell_size = [float(np.min(np.diff(np.unique(x)))), float(np.min(np.diff(np.unique(y))))]
+    x0, y0 = float(x.min()), float(y.min())
+    col = np.round((x - x0) / cell_size[0]).astype(np.int64)
+    row = np.round((y - y0) / cell_size[1]).astype(np.int64)
+    cols, rows = int(col.max()) + 1, int(row.max()) + 1
+    grid = np.full(cols * rows, np.nan)
+    grid[row * cols + col] = z
+    return {
+        "cols": cols, "rows": rows, "x0": x0, "y0": y0,
+        "dx": float(cell_size[0]), "dy": float(cell_size[1]),
+        "z": base64.b64encode(grid.astype("<f4").tobytes()).decode("ascii"),
+    }
+
+
+def pointcloud_mesh(vertices: DataFrameLike, faces: Any) -> dict:
+    """Pack a triangle mesh as the ``pointcloud`` ``mesh`` option.
+
+    ``vertices`` has columns ``x``, ``y``, ``z`` and ``r``, ``g``, ``b``
+    (0-255); ``faces`` is an (n, 3) array of 0-based vertex indices. Returns
+    ``{nv, nf, positions, colors, faces}`` as base64 Float32 xyz, Uint8 rgb
+    and Uint32 indices. It turns on the viewer's Points / Mesh switch.
+    """
+    xyz = np.column_stack([_numeric_column(vertices, c, "pointcloud") for c in ("x", "y", "z")])
+    rgb = np.column_stack([_numeric_column(vertices, c, "pointcloud") for c in ("r", "g", "b")])
+    f = np.asarray(faces, dtype=np.int64).reshape(-1, 3)
+    if len(f) and (f.min() < 0 or f.max() >= len(xyz)):
+        raise ValueError("pointcloud_mesh(): `faces` must be 0-based indices into `vertices`.")
+
+    def enc(a: np.ndarray, dtype: str) -> str:
+        return base64.b64encode(np.ascontiguousarray(a).astype(dtype).tobytes()).decode("ascii")
+
+    return {"nv": len(xyz), "nf": len(f), "positions": enc(xyz.ravel(), "<f4"),
+            "colors": enc(rgb.ravel(), "u1"), "faces": enc(f.ravel(), "<u4")}
 
 
 # ---- composite expansion ---------------------------------------------------

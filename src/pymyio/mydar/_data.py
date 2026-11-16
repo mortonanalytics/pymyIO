@@ -17,7 +17,7 @@ _DATA = files("pymyio.mydar") / "data"
 _CLOUD_FILE = "mydar-iphone-walk-cloud.bin"
 _CLOUD_MAGIC = b"MYDARPC1"
 _TABLES = ("points", "terrain", "track", "track_points", "gps_fixes", "pins",
-           "accuracy", "trajectory")
+           "accuracy", "trajectory", "mesh_vertices", "mesh_faces")
 
 
 def mydar_iphone_walk() -> MydarWalk:
@@ -25,15 +25,18 @@ def mydar_iphone_walk() -> MydarWalk:
 
     Ryan Morton's outdoor walk of 2026-11-15: about 50 seconds and 25 m of
     track, recorded with the myDAR iPhone app and processed from the phone's
-    capture files with the myDAR CLI at autodar commit ``a1388d8``. It holds
+    capture files with the myDAR CLI at autodar commit ``5f3aeb4``. It holds
     6,000 of the walk's 887,038 LiDAR points with their classes (vegetation
-    split by height) and per-point sigma, the DEM, the orthophoto, the track,
-    49 GPS fixes with residuals, the accuracy figures and the trajectory. It
-    is the same data as myIO's ``mydar_iphone_walk``.
+    split by height) and per-point sigma, the DEM, the orthophoto, the phone's
+    scene mesh (11,219 triangles with vertex colors), the track, 49 GPS fixes
+    with residuals, the accuracy figures and the trajectory. It is the same
+    data as myIO's ``mydar_iphone_walk``.
 
     The walk is in local coordinates only, moved there by subtraction (no
     rotation or scaling): x and y are meters from the walk's south-west corner
-    and z is height above the lowest DEM (ground) cell. The subtracted origin,
+    and z is height above the lowest DEM (ground) cell. The mesh was converted
+    from the phone's east-north-up frame into the project CRS before the same
+    shift. The subtracted origin,
     the project CRS and the feature layers are not included (``origin`` values
     are NaN, ``crs`` is ``None``, ``features`` is empty). ``sigma_m``,
     classes, the accuracy figures, GPS residuals and the trajectory (meters
@@ -49,10 +52,14 @@ def mydar_iphone_walk() -> MydarWalk:
                                        keep_default_na=False, na_values=[""])
     tables["points"].attrs["n_total"] = meta["points_n_total"]
     tables["terrain"].attrs["cell_size"] = meta["terrain_cell_size"]
+    faces = tables.pop("mesh_faces")[["a", "b", "c"]].to_numpy(dtype=np.int64)
+    mesh = {"vertices": tables.pop("mesh_vertices"), "faces": faces,
+            "n_triangles_total": meta["mesh_n_triangles_total"]}
     e, size = meta["orthophoto_extent"], meta["orthophoto_size"]
     return MydarWalk(
         **tables,
         features={},
+        mesh=mesh,
         orthophoto={
             "png": (_DATA / "orthophoto.png").read_bytes(),
             "extent": dict(zip(("xmin", "xmax", "ymin", "ymax"), e)),
