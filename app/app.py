@@ -129,6 +129,7 @@ FIELD_CLIP = json.loads(
     (Path(__file__).resolve().parents[1] / "vendor" / "myIO" / "app" / "data"
      / "field-tracking-data.json").read_text(encoding="utf-8")
 )
+FIELD_LABEL = "Metrica Sample Game 1 · opening 20 seconds"
 
 
 # myDAR walk demo: a real iPhone walk that ships with pymyIO, in local
@@ -1369,23 +1370,30 @@ def server(input, output, session):
         )
 
     # -- Sports --
+    # The overlay controls update the drawn chart in place (update_options), so
+    # playback time, the selected player and the metric window survive a toggle.
+    def field_overlay_options():
+        overlays = input.field_overlays()
+        return {
+            "overlays": {"shape": "shape" in overlays, "separation": "separation" in overlays},
+            "excludeEntities": ["home-11", "away-25"] if input.field_exclude_gk() else [],
+        }
+
     @render_myio
     def field_plot():
-        overlays = input.field_overlays()
+        with reactive.isolate():
+            overlay_options = field_overlay_options()
         return (
             MyIO(FIELD_CLIP["tracking"], height="1000px")
             .add_layer(
-                type="field", label="Metrica Sample Game 1 · opening 20 seconds",
+                type="field", label=FIELD_LABEL,
                 mapping={"x_var": "x", "y_var": "y", "time": "time", "entity": "entity_id",
                          "team": "team", "label": "label", "kind": "kind"},
                 options={
                     "pitchLength": FIELD_CLIP["pitch"]["length"],
                     "pitchWidth": FIELD_CLIP["pitch"]["width"],
                     "maxGap": 0.5, "events": FIELD_CLIP["events"],
-                    "overlays": {"shape": "shape" in overlays,
-                                 "separation": "separation" in overlays},
-                    "excludeEntities": (["home-11", "away-25"]
-                                        if input.field_exclude_gk() else []),
+                    **overlay_options,
                 },
             )
             .set_margin(top=8, bottom=8, left=8, right=8)
@@ -1394,10 +1402,15 @@ def server(input, output, session):
             .render()
         )
 
+    @reactive.effect
+    @reactive.event(input.field_overlays, input.field_exclude_gk, ignore_init=True)
+    def _field_overlays_in_place():
+        field_plot.widget.update_options({FIELD_LABEL: field_overlay_options()})
+
     # -- myDAR walk --
     # Selecting in the map's 2D view highlights the same points (point_id) on
     # the profile; the uncertainty and GPS charts share a time cursor. Moving
-    # the line redraws the map (pymyIO does not yet update options in place).
+    # the line updates the map in place (update_options) and keeps the camera.
     @reactive.calc
     def mydar_line():
         return _mydar_profile_line(input.mydar_bearing(), input.mydar_offset())
@@ -1411,13 +1424,22 @@ def server(input, output, session):
         chart = mydar_profile_view(MYDAR_WALK, line["from"], line["to"], width=width)
         return link_charts(MyIO(), chart, on="point_id", group="mydar_points")[1]
 
-    # The map depends on the line only, so the corridor width does not resend
-    # the points.
+    # The map draws once; the line moves in place and the corridor width does
+    # not touch it.
     @reactive.calc
     def mydar_map_chart():
-        chart = mydar_cloud_view(MYDAR_WALK, points=MYDAR_CLOUD, profile=mydar_line(),
+        with reactive.isolate():
+            line = mydar_line()
+        chart = mydar_cloud_view(MYDAR_WALK, points=MYDAR_CLOUD, profile=line,
                                  height="600px")
         return link_charts(chart, MyIO(), on="point_id", group="mydar_points")[0]
+
+    @reactive.effect
+    @reactive.event(mydar_line, ignore_init=True)
+    def _mydar_line_in_place():
+        line = mydar_line()
+        mydar_map.widget.update_options({"Point cloud": {"profile": [
+            [float(v) for v in line["from"]], [float(v) for v in line["to"]]]}})
 
     def mydar_time():
         # 400 px: the Quality tab is hidden when these first draw, and a hidden
