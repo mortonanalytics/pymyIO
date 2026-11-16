@@ -6,6 +6,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-11-15
+
 ### Added
 
 - **myDAR walks** (parity with myIO #201). New `pymyio.mydar` module:
