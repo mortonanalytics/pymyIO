@@ -6,6 +6,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`MyIOWidget.update_options()`** (#45, parity with myIO's
+  `updateMyIOOptions()`, myIO #193). Merges new options into layers of a
+  drawn chart by label and updates it in place, without a redraw: a field
+  chart keeps playback time, selection and metric window across overlay
+  changes, and a point cloud keeps its camera. Works in notebooks and in
+  Shiny for Python (`chart.widget.update_options(...)`). Field options are
+  validated the same way `add_layer()` validates them.
+- The gallery's Sports overlay controls and the myDAR profile line now
+  update their charts in place.
+
 ### Fixed
 
 - An omitted `color` now defaults the way R `addIoLayer()` does (#42): the
