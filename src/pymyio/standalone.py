@@ -187,18 +187,20 @@ def _safe_json(cfg: Mapping[str, Any]) -> str:
 
 
 def _js_dims(width: Union[int, str], height: Union[int, str]) -> Tuple[str, str]:
-    """Render width/height values as JavaScript literal tokens.
+    """Render width/height values as JavaScript expressions in pixels.
 
-    Integer-like inputs produce bare numbers (``600``). Strings like
-    ``"100%"`` produce quoted, JSON-escaped JS strings (``"100%"``).
+    Integer-like inputs produce bare numbers (``600``). CSS strings like
+    ``"100%"`` or ``"400px"`` are already applied to the container div, so
+    they become a measurement of it (``r.width||600``, where ``r`` is the
+    container's bounding rect), as widget.js does; the engine needs numbers.
     """
 
-    def one(v: Union[int, str]) -> str:
+    def one(v: Union[int, str], side: str, fallback: int) -> str:
         if isinstance(v, (int, float)) and not isinstance(v, bool):
             return str(int(v))
-        return json.dumps(str(v))
+        return f"(r.{side}||{fallback})"
 
-    return one(width), one(height)
+    return one(width, "width", 600), one(height, "height", 400)
 
 
 _CLOSING_TAG_RE = re.compile(r"</(script|style)", re.IGNORECASE)
@@ -247,6 +249,7 @@ def _render_inline(
     init = (
         "(function(){"
         "var el=document.getElementById('pymyio-chart-" + uid + "');"
+        "var r=el.getBoundingClientRect();"
         "var cfg=JSON.parse(document.getElementById('pymyio-config-" + uid
         + "').textContent);"
         "new window.myIOchart({element:el,config:cfg,width:"
@@ -291,6 +294,7 @@ def _render_bundled(
     init = (
         "(function(){"
         "var el=document.getElementById('pymyio-chart-" + uid + "');"
+        "var r=el.getBoundingClientRect();"
         "var cfg=JSON.parse(document.getElementById('pymyio-config-" + uid
         + "').textContent);"
         "new window.myIOchart({element:el,config:cfg,width:"

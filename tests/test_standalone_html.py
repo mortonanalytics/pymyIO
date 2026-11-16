@@ -365,3 +365,44 @@ def test_field_chart_renders_players_overlays_and_events_in_browser(tmp_path):
     assert entities == ["a1", "h1", "h2"]
     assert shape_boxes == 1
     assert events == 2
+
+
+@pytest.mark.skipif(
+    importlib.util.find_spec("playwright") is None,
+    reason="playwright not installed",
+)
+def test_default_size_and_uncolored_donut_render_in_browser(tmp_path):
+    """#43: the default width="100%" is measured, so the SVG gets a pixel
+    width, not NaN. #42: a donut with no color takes the Okabe-Ito palette
+    and draws its arcs instead of throwing."""
+    from playwright.sync_api import sync_playwright
+
+    donut = MyIO([{"k": "a", "v": 3}, {"k": "b", "v": 5}]).add_layer(
+        "donut", label="d", mapping={"x_var": "k", "y_var": "v"})
+    pages = {"point.html": _point_chart(), "donut.html": donut}
+    for name, chart in pages.items():
+        (tmp_path / name).write_text(to_standalone_html(chart), encoding="utf-8")
+
+    with sync_playwright() as p:
+        try:
+            browser = p.chromium.launch()
+        except Exception as e:  # pragma: no cover - environment-dependent
+            pytest.skip(f"chromium not installed: {e}")
+        page = browser.new_page(viewport={"width": 900, "height": 700})
+        errors: list = []
+        page.on("pageerror", lambda e: errors.append(str(e)))
+
+        page.goto(f"file://{tmp_path / 'point.html'}")
+        page.wait_for_selector(".pymyio-chart svg.myIO-svg", timeout=10_000)
+        width = page.locator("svg.myIO-svg").first.get_attribute("width")
+        view_box = page.locator("svg.myIO-svg").first.get_attribute("viewBox")
+
+        page.goto(f"file://{tmp_path / 'donut.html'}")
+        page.wait_for_selector(".pymyio-chart svg", timeout=10_000)
+        arcs = page.locator(".donut").count()
+        browser.close()
+
+    assert "NaN" not in width and "NaN" not in (view_box or "")
+    assert float(width) > 800
+    assert arcs == 2
+    assert errors == []
