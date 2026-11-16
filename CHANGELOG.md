@@ -18,6 +18,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The gallery's Sports overlay controls and the myDAR profile line now
   update their charts in place.
 
+### Fixed
+
+- An omitted `color` now defaults the way R `addIoLayer()` does (#42): the
+  Okabe-Ito palette for donut, treemap, sankey, waffle, funnel, radar and
+  parallel, and its first color for other ungrouped layers. A donut with no
+  color used to draw nothing and throw in the engine.
+- `to_standalone_html()` with the default `width="100%"` (or any CSS size)
+  measures the container before drawing, as the widget does, instead of
+  passing the string to the engine and getting an SVG `width="NaN"` (#43).
+
 ## [0.6.1] — 2026-11-16
 
 ### Added

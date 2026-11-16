@@ -24,6 +24,9 @@ OKABE_ITO_PALETTE: List[str] = [
     "#0072B2", "#D55E00", "#CC79A7", "#999999",
 ]
 
+# Types that take the whole palette when color is omitted (R addIoLayer()).
+_PALETTE_TYPES = ("donut", "treemap", "sankey", "waffle", "funnel", "radar", "parallel")
+
 # Full canonical type list (matches R/util.R::ALLOWED_TYPES).
 ALLOWED_TYPES: List[str] = [
     "field",
@@ -1241,6 +1244,15 @@ class MyIO:
                     f"Transform '{transform}' is not valid for layer type "
                     f"'{type}'. Allowed: {', '.join(allowed)}."
                 )
+
+        # Port of R addIoLayer()'s color default: an omitted color is the full
+        # Okabe-Ito palette for types that color by category inside one layer,
+        # and its first color for other ungrouped layers (#42).
+        groups_in_renderer = type in ("radar", "parallel")
+        if (color is None and ("group" not in mapping or groups_in_renderer)
+                and type != "gauge"):
+            color = (list(OKABE_ITO_PALETTE) if type in _PALETTE_TYPES
+                     else OKABE_ITO_PALETTE[0])
 
         layer_id = f"layer_{len(self.config['layers']) + 1:03d}"
 

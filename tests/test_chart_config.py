@@ -368,3 +368,19 @@ def test_grouped_radar_and_parallel_stay_one_layer(chart_type, mapping):
     assert layers[0]["label"] == "L"
     assert layers[0]["mapping"]["group"] == "g"
     assert len(layers[0]["data"]) == 6
+
+
+def test_omitted_color_defaults_like_r_addiolayer():
+    # #42: port of R addIoLayer()'s color default.
+    rows = [{"k": "a", "v": 3, "g": "x"}, {"k": "b", "v": 5, "g": "y"}]
+
+    def color(type, mapping, **kw):
+        return MyIO(rows).add_layer(type, label="L", mapping=mapping, **kw).config["layers"][-1]["color"]
+
+    assert color("donut", {"x_var": "k", "y_var": "v"}) == OKABE_ITO_PALETTE
+    assert color("point", {"x_var": "v", "y_var": "v"}) == OKABE_ITO_PALETTE[0]
+    assert color("donut", {"x_var": "k", "y_var": "v"}, color="#123456") == "#123456"
+    assert color("gauge", {"value": "v"}) is None
+    # Grouped layers keep coloring per group, as before.
+    grouped = MyIO(rows).add_layer("point", label="L", mapping={"x_var": "v", "y_var": "v", "group": "g"})
+    assert [layer["color"] for layer in grouped.config["layers"]] == OKABE_ITO_PALETTE[:2]
