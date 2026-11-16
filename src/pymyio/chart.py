@@ -8,6 +8,7 @@ Mirrors the JSON config produced by the R package's ``myIO()``,
 
 from __future__ import annotations
 
+import base64
 import copy
 import math
 import numbers
@@ -36,6 +37,7 @@ ALLOWED_TYPES: List[str] = [
     "radar", "funnel", "parallel",
     "survfit", "histogram_fit",
     "calendarHeatmap", "quantile_dots", "fan",
+    "raster", "image", "pointcloud",
 ]
 
 # Allowed (type, transform) combinations (matches R/util.R::VALID_COMBINATIONS).
@@ -74,6 +76,9 @@ VALID_COMBINATIONS: dict = {
     "calendarHeatmap": ("identity",),
     "quantile_dots":   ("identity", "quantile_dots"),
     "fan":             ("identity",),
+    "raster":          ("identity",),
+    "image":           ("identity",),
+    "pointcloud":      ("identity",),
 }
 
 # Compatibility groups for layer co-existence (matches R/util.R::COMPATIBILITY_GROUPS
@@ -99,6 +104,8 @@ COMPATIBILITY_GROUPS: dict = {
     "survfit": "axes-continuous", "histogram_fit": "axes-binned",
     "calendarHeatmap": "standalone-calendar",
     "quantile_dots": "axes-categorical", "fan": "axes-continuous",
+    "raster": "axes-continuous", "image": "axes-continuous",
+    "pointcloud": "standalone-pointcloud",
 }
 
 GROUP_MATRIX: dict = {
@@ -117,6 +124,7 @@ GROUP_MATRIX: dict = {
     "standalone-funnel": ("standalone-funnel",),
     "standalone-parallel": ("standalone-parallel",),
     "standalone-calendar": ("standalone-calendar",),
+    "standalone-pointcloud": (),
 }
 
 _REQUIRED_MAPPING: dict = {
@@ -157,6 +165,9 @@ _REQUIRED_MAPPING: dict = {
     "calendarHeatmap": ("date", "value"),
     "quantile_dots":   ("x_var", "y_var"),
     "fan":             ("x_var", "y_var"),
+    "raster":          ("x_var", "y_var", "value"),
+    "image":           ("x_var", "y_var"),
+    "pointcloud":      ("x_var", "y_var", "z_var"),
 }
 
 # Composite layer types — each expands into multiple primitive layers.
@@ -305,6 +316,83 @@ def _columns(data: DataFrameLike) -> List[str]:
         return list(cols)
     records = _to_records(data)
     return list(records[0].keys()) if records else []
+
+
+# Mapping keys that must name numeric columns, per type (R validate_layer_inputs).
+_NUMERIC_MAPPING_KEYS: dict = {
+    "raster": ("x_var", "y_var", "value", "shade"),
+    "image": ("x_var", "y_var"),
+    "pointcloud": ("x_var", "y_var", "z_var", "red", "green", "blue", "class", "sigma"),
+}
+
+
+def _numeric_column(data: DataFrameLike, col: str, type: str) -> np.ndarray:
+    """Return column ``col`` as float64, raising like R when it is missing or not numeric."""
+    cols = _columns(data)
+    if col not in cols:
+        raise ValueError(
+            f"Column '{col}' not found in data. Available columns: {', '.join(cols)}."
+        )
+    if hasattr(data, "columns"):
+        values = np.asarray(data[col])
+        numeric = values.dtype.kind in "biuf"
+    else:
+        raw = [row.get(col) for row in _to_records(data)]
+        numeric = all(_is_missing(v) or _is_number(v) for v in raw)
+        values = np.asarray([np.nan if _is_missing(v) else v for v in raw]) if numeric else None
+    if not numeric:
+        raise ValueError(f"Mapped field '{col}' must be numeric for type '{type}'.")
+    return values.astype(np.float64)
+
+
+def _pointcloud_payload(data: DataFrameLike, mapping: Mapping[str, str]) -> dict:
+    """Pack a point cloud as base64 typed arrays (R ``pointcloud_payload()``).
+
+    positions: Uint16 x, y, z interleaved, scaled to bbox
+    rgb:       Uint8 r, g, b interleaved (mapping red/green/blue, 0-255)
+    cls:       Uint8 class code (mapping class)
+    sigma:     Uint8, (log10(sigma_m) + 3) / 4 * 255, i.e. 1 mm to 10 m
+    """
+    def col(key: str) -> Optional[np.ndarray]:
+        name = mapping.get(key)
+        return None if name is None else _numeric_column(data, name, "pointcloud")
+
+    x, y, z = col("x_var"), col("y_var"), col("z_var")
+    keep = np.isfinite(x) & np.isfinite(y) & np.isfinite(z)
+    if not keep.any():
+        raise ValueError(
+            "type 'pointcloud' needs at least one point with finite x, y and z."
+        )
+    x, y, z = x[keep], y[keep], z[keep]
+    bbox = [float(x.min()), float(x.max()), float(y.min()), float(y.max()),
+            float(z.min()), float(z.max())]
+
+    def quantize(v: np.ndarray, lo: float, hi: float) -> np.ndarray:
+        span = hi - lo if hi > lo else 1.0
+        return np.round((v - lo) / span * 65535)
+
+    def b64(v: np.ndarray, dtype: str) -> str:
+        return base64.b64encode(np.ascontiguousarray(v).astype(dtype).tobytes()).decode("ascii")
+
+    def byte(v: np.ndarray) -> np.ndarray:
+        return np.clip(np.round(np.nan_to_num(v)), 0, 255)
+
+    positions = np.column_stack([
+        quantize(x, bbox[0], bbox[1]), quantize(y, bbox[2], bbox[3]),
+        quantize(z, bbox[4], bbox[5]),
+    ]).ravel()
+    out: dict = {"n": int(keep.sum()), "bbox": bbox, "positions": b64(positions, "<u2")}
+    rgb = [col(k) for k in ("red", "green", "blue")]
+    if all(v is not None for v in rgb):
+        out["rgb"] = b64(np.column_stack([byte(v[keep]) for v in rgb]).ravel(), "u1")
+    cls = col("class")
+    if cls is not None:
+        out["cls"] = b64(byte(cls[keep]), "u1")
+    sigma = col("sigma")
+    if sigma is not None:
+        s = np.maximum(sigma[keep], 1e-3)
+        out["sigma"] = b64(byte((np.log10(s) + 3) / 4 * 255), "u1")
+    return out
 
 
 # ---- composite expansion ---------------------------------------------------
@@ -1079,6 +1167,11 @@ class MyIO:
                     f"{', '.join(cols)}."
                 )
 
+        if type in _NUMERIC_MAPPING_KEYS:
+            for key in _NUMERIC_MAPPING_KEYS[type]:
+                if key in mapping:
+                    _numeric_column(layer_data, mapping[key], type)
+
         self._check_layer_compatibility(type)
 
         if type not in COMPOSITE_TYPES:
@@ -1090,6 +1183,18 @@ class MyIO:
                 )
 
         layer_id = f"layer_{len(self.config['layers']) + 1:03d}"
+
+        # A point cloud ships its points packed in options, not as JSON rows.
+        if type == "pointcloud":
+            packed = dict(options or {})
+            packed.update(_pointcloud_payload(layer_data, mapping))
+            self.config["layers"].append(self._build_layer(
+                layer_type=type, label=label, data=[], mapping=mapping,
+                color=color, transform=transform, options=packed,
+                layer_id=layer_id, order=1, transform_meta={},
+            ))
+            return self
+
         records = _to_records(layer_data)
         for i, row in enumerate(records, start=1):
             row.setdefault("_source_key", f"row_{i}")
@@ -1405,6 +1510,18 @@ class MyIO:
 
     def flip_axis(self, flip: bool = True) -> "MyIO":
         self.config["scales"]["flipAxis"] = flip
+        return self
+
+    def set_equal_aspect(self, enabled: bool = True) -> "MyIO":
+        """Equal units per pixel on x and y, for maps, plans and images.
+
+        Mirrors R's ``setEqualAspect()``: the tighter axis is widened about
+        its center; limits from :meth:`set_axis_limits` still set where the
+        view starts.
+        """
+        if not isinstance(enabled, bool):
+            raise ValueError("set_equal_aspect(): `enabled` must be True or False.")
+        self.config["scales"]["equalAspect"] = enabled
         return self
 
     def set_color_scheme(

@@ -29,7 +29,8 @@ drift.
 
 - :material-download: **[Install](installation.md)** — one line, `pip install pymyio`.
 - :material-rocket-launch: **[Quickstart](quickstart.md)** — render your first chart in Jupyter.
-- :material-chart-box: **[Chart types](charts.md)** — 34 chart types with short examples.
+- :material-chart-box: **[Chart types](charts.md)** — 40 chart types with short examples.
+- :material-map: **[myDAR walks](mydar.md)** — read and plot phone LiDAR walks, with a real walk to try.
 - :material-swap-horizontal: **[R → Python API map](api.md)** — muscle-memory lookup for R-myIO users.
 - :material-server: **[Hosts](hosts/index.md)** — where pymyIO runs (Jupyter, Shiny, marimo, …).
 - :material-road: **[Roadmap](roadmap.md)** — what's landing between 0.1 and 1.0.

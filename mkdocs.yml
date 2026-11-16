@@ -57,6 +57,7 @@ nav:
   - Installation: installation.md
   - Quickstart: quickstart.md
   - Chart types: charts.md
+  - myDAR walks: mydar.md
   - R → Python API map: api.md
   - Hosts:
       - Overview: hosts/index.md

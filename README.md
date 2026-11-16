@@ -128,14 +128,33 @@ publishing pipelines that prefer sidecar assets. Interactive-only features
 `MyIOStaticWarning` — the chart renders, but round-trip callbacks need a
 live Python kernel.
 
-## Supported chart types (34 total)
+## Supported chart types (40 total)
 
 `line`, `point`, `bar`, `groupedBar`, `area`, `histogram`, `heatmap`,
 `hexbin`, `treemap`, `gauge`, `donut`, `candlestick`, `waterfall`, `sankey`,
 `boxplot`, `violin`, `ridgeline`, `rangeBar`, `text`, `regression`,
 `bracket`, `comparison`, `qq`, `lollipop`, `dumbbell`, `waffle`, `beeswarm`,
 `bump`, `radar`, `funnel`, `parallel`, `survfit`, `histogram_fit`,
-`calendarHeatmap`.
+`calendarHeatmap`, `quantile_dots`, `fan`, `field`, `raster`, `image`,
+`pointcloud`.
+
+## myDAR walks
+
+`pymyio.mydar` reads the folders the myDAR phone app produces (point cloud,
+DEM, orthophoto, GeoPackage, trajectory) and plots them: a WebGL 3D point
+cloud, a plan view over the orthophoto, terrain, a profile, and the quality
+charts, or all of them at once with `mydar_dashboard()`. It ships a real
+iPhone walk in local coordinates to try it on:
+
+```python
+from pymyio.mydar import mydar_dashboard, mydar_iphone_cloud, mydar_iphone_walk
+
+walk = mydar_iphone_walk()
+mydar_dashboard(walk, points=mydar_iphone_cloud()).save("walk.html")
+```
+
+The views need pandas; the readers need `pip install 'pymyio[mydar]'`. See
+the [myDAR walks guide](https://mortonanalytics.github.io/pymyIO/mydar/).
 
 ## R → Python function map
 
@@ -153,6 +172,7 @@ live Python kernel.
 | `setToolTipOptions()` | `MyIO.set_tooltip_options()` |
 | `defineCategoricalAxis()` | `MyIO.define_categorical_axis()` |
 | `flipAxis()` | `MyIO.flip_axis()` |
+| `setEqualAspect()` | `MyIO.set_equal_aspect()` |
 | `suppressLegend()` | `MyIO.suppress_legend()` |
 | `suppressAxis()` | `MyIO.suppress_axis()` |
 | `setBrush()` | `MyIO.set_brush()` |
