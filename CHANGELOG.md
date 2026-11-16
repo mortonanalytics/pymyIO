@@ -20,6 +20,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Hovering a chart in a notebook or standalone page no longer throws
+  `HTMLWidgets is not defined`, and donut and treemap tooltips show again
+  (#41). Engine fix in myIO #204; `vendor/myIO` bumped to `eb637cd`.
+
 - An omitted `color` now defaults the way R `addIoLayer()` does (#42): the
   Okabe-Ito palette for donut, treemap, sankey, waffle, funnel, radar and
   parallel, and its first color for other ungrouped layers. A donut with no
