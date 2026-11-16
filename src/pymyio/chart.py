@@ -226,7 +226,8 @@ def _is_number(value: Any) -> bool:
     return isinstance(value, numbers.Real) and not isinstance(value, (bool, np.bool_))
 
 
-def _validate_field_options(options: Optional[Mapping[str, Any]]) -> Optional[dict]:
+def _validate_field_options(options: Optional[Mapping[str, Any]],
+                            caller: str = "addIoLayer") -> Optional[dict]:
     """Port of R ``validate_field_options()``: field overlay options (myIO #169)
     with JSON-stable shapes, and data-frame ``events`` coerced to records."""
     if options is None:
@@ -239,7 +240,7 @@ def _validate_field_options(options: Optional[Mapping[str, Any]]) -> Optional[di
                 or not all(k in ("shape", "separation") for k in overlays)
                 or not all(isinstance(v, (bool, np.bool_)) for v in overlays.values())):
             raise ValueError(
-                "addIoLayer(): field option overlays must be a named list of "
+                f"{caller}(): field option overlays must be a named list of "
                 "TRUE/FALSE values for shape and separation."
             )
         options["overlays"] = {k: bool(v) for k, v in overlays.items()}
@@ -249,7 +250,7 @@ def _validate_field_options(options: Optional[Mapping[str, Any]]) -> Optional[di
         if (not _is_number(min_players) or not math.isfinite(min_players)
                 or min_players < 2 or min_players != round(min_players)):
             raise ValueError(
-                "addIoLayer(): field option minPlayers must be a whole number of at least 2."
+                f"{caller}(): field option minPlayers must be a whole number of at least 2."
             )
         options["minPlayers"] = int(min_players)
 
@@ -259,7 +260,7 @@ def _validate_field_options(options: Optional[Mapping[str, Any]]) -> Optional[di
         if not all(isinstance(v, str) or _is_number(v) for v in ids) or any(
                 _is_missing(v) for v in ids):
             raise ValueError(
-                "addIoLayer(): field option excludeEntities must be a vector of entity ids."
+                f"{caller}(): field option excludeEntities must be a vector of entity ids."
             )
         # R's as.character(): whole numbers lose the trailing ".0".
         options["excludeEntities"] = [
@@ -272,7 +273,7 @@ def _validate_field_options(options: Optional[Mapping[str, Any]]) -> Optional[di
         if (bounds is None or len(bounds) != 2 or not all(_is_number(v) for v in bounds)
                 or not all(math.isfinite(v) for v in bounds) or bounds[0] > bounds[1]):
             raise ValueError(
-                "addIoLayer(): field option metricWindow must be c(start, end) in "
+                f"{caller}(): field option metricWindow must be c(start, end) in "
                 "seconds with start <= end."
             )
         options["metricWindow"] = [float(v) for v in bounds]

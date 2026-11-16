@@ -105,7 +105,39 @@ function render({ model, el }) {
     chart.on?.("rollover", (e) => { model.set("rollover", e); model.save_changes(); });
   }
 
-  model.on("change:config", draw);
+  // update_options(): merge new options into layers by label. The drawn chart
+  // updates in place (chart.updateOptions), and the merged options are written
+  // back to `config` without a redraw, so a later redraw (resize) keeps them.
+  let syncingOptions = false;
+  function applyOptions(updates) {
+    if (!Array.isArray(updates) || updates.length === 0) return;
+    // Set the model before the chart: the engine may hold the same config
+    // object and merge into it, and Backbone would then see no change to sync.
+    const config = model.get("config") || {};
+    if (Array.isArray(config.layers)) syncConfig(config, updates);
+    if (chart && typeof chart.updateOptions === "function") chart.updateOptions(updates);
+  }
+
+  function syncConfig(config, updates) {
+    const byLabel = new Map(updates
+      .filter((u) => u && u.options && typeof u.options === "object" && !Array.isArray(u.options))
+      .map((u) => [u.label, u.options]));
+    const layers = config.layers.map((layer) => byLabel.has(layer.label)
+      ? { ...layer, options: { ...(layer.options || {}), ...byLabel.get(layer.label) } }
+      : layer);
+    syncingOptions = true;
+    try {
+      model.set("config", { ...config, layers });
+      model.save_changes();
+    } finally {
+      syncingOptions = false;
+    }
+  }
+
+  model.on("msg:custom", (msg) => {
+    if (msg && msg.type === "myio:proxy-options") applyOptions(msg.layers);
+  });
+  model.on("change:config", () => { if (!syncingOptions) draw(); });
   model.on("change:width change:height", () => {
     applySize(container, model.get("width"), model.get("height"));
     draw();
