@@ -210,7 +210,7 @@ def mydar_gps_view(walk: MydarWalk, height: str = "320px") -> MyIO:
 def mydar_cloud_view(walk: MydarWalk, points: Optional[pd.DataFrame] = None, color: str = "rgb",
                      mode: str = "3d", point_size: float = 2, ortho: bool = True,
                      profile: Optional[Mapping[str, Sequence[float]]] = None,
-                     selectable: bool = True, surface: str = "points",
+                     selectable: bool = True, surface: str = "points", slider: bool = True,
                      height: str = "560px") -> MyIO:
     """Map view of the walk in 2D and 3D: one WebGL viewer (``pointcloud``).
 
@@ -229,6 +229,11 @@ def mydar_cloud_view(walk: MydarWalk, points: Optional[pd.DataFrame] = None, col
       (``{"from": (x, y), "to": (x, y)}``) and the accuracy card.
     - in 2D, a Select tool (``selectable``): the rectangle's ``walk.points``
       are sent on ``point_id`` to linked charts, e.g. the profile.
+    - when the walk has a track of two or more points, the app's slider
+      along the walk (``slider=False`` hides it). In 3D it turns the view
+      about that point of the walk and cuts away what lies in front of it,
+      so a wall does not hide the room behind; Whole walk goes back to the
+      full scan. In 2D it centers the plan on the point and marks it.
 
     ``points`` defaults to ``walk.points``; pass :func:`mydar_iphone_cloud`
     or ``read_mydar_points(path, max_points=math.inf)`` for a denser cloud.
@@ -249,6 +254,7 @@ def mydar_cloud_view(walk: MydarWalk, points: Optional[pd.DataFrame] = None, col
         raise ValueError("mydar_cloud_view(): `surface` must be 'points' or 'mesh'.")
     _check_flag(ortho, "ortho", "mydar_cloud_view")
     _check_flag(selectable, "selectable", "mydar_cloud_view")
+    _check_flag(slider, "slider", "mydar_cloud_view")
     if not _is_real(point_size) or not math.isfinite(point_size) or point_size <= 0:
         raise ValueError("mydar_cloud_view(): `point_size` must be a single positive number.")
 
@@ -268,6 +274,7 @@ def mydar_cloud_view(walk: MydarWalk, points: Optional[pd.DataFrame] = None, col
     present = MYDAR_CLASSES[MYDAR_CLASSES["class"].isin(present_codes)]
     options: Dict[str, Any] = {
         "color": color, "mode": mode, "pointSize": point_size, "surface": surface,
+        "slider": slider,
         "classColors": {str(c): col for c, col in zip(present["class"], present["color"])},
         "classNames": {str(c): n for c, n in zip(present["class"], present["class_name"])},
         "caption": _caption(walk),

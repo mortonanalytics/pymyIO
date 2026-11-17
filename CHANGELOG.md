@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Slider along the walk in `mydar_cloud_view()`** (parity with myIO #206):
+  the myDAR app's slider under the map viewer when the walk has a track. In
+  3D it turns the view about that point of the walk and cuts away what lies
+  nearer than half the view's height in front of it, so a wall does not hide
+  the room behind; Whole walk returns to the full scan. In 2D it centers the
+  plan on the point and marks it. `slider=False` hides it; on a raw
+  `pointcloud` layer the option is `slider`. `vendor/myIO` bumped to
+  `8602d95` (also picks up the funnel label fix, myIO #205).
 - **`MyIOWidget.update_options()`** (#45, parity with myIO's
   `updateMyIOOptions()`, myIO #193). Merges new options into layers of a
   drawn chart by label and updates it in place, without a redraw: a field

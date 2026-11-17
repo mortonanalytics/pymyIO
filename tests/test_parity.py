@@ -531,3 +531,15 @@ def test_source_keys_are_row_strings():
     )
     keys = [r["_source_key"] for r in chart.to_config()["layers"][0]["data"]]
     assert keys == [f"row_{i}" for i in range(1, 7)]
+
+
+# ---- myDAR views take R's arguments in R's order ------------------------
+
+def test_mydar_cloud_view_arguments_match_r():
+    import inspect
+
+    from pymyio.mydar import mydar_cloud_view
+    from pymyio.tools import load_schema
+
+    r_args = load_schema()["function_signatures"]["mydar_cloud_view"]
+    assert list(inspect.signature(mydar_cloud_view).parameters) == r_args
