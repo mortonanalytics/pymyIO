@@ -507,6 +507,13 @@ def test_cloud_view_packs_the_cloud_with_ortho_track_and_accuracy_card(walk):
         mydar_cloud_view(walk, color="rainbow")
 
 
+def test_cloud_view_shows_the_slider_along_the_walk_unless_slider_false(walk):
+    assert mydar_cloud_view(walk).config["layers"][0]["options"]["slider"] is True
+    assert mydar_cloud_view(walk, slider=False).config["layers"][0]["options"]["slider"] is False
+    with pytest.raises(ValueError, match="slider"):
+        mydar_cloud_view(walk, slider=None)
+
+
 def test_views_refuse_a_walk_without_the_part_they_plot():
     w = mydar_iphone_walk()
     w.points = None

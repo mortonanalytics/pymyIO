@@ -77,7 +77,11 @@ the point color. This walk's camera band was withheld, so Camera is off with
 a note. The track is drawn as its uncertainty band, light to dark orange as
 the map-position uncertainty rises. The card gives the walk's two accuracy
 figures, Shape and Map, separately. In 2D, Select picks points by rectangle
-and sends their `point_id`s to linked charts.
+and sends their `point_id`s to linked charts. The slider under the view moves
+along the walk, as in the app: in 3D it turns the view about that point and
+cuts away what lies in front of it, so a wall does not hide the room behind
+(Whole walk goes back to the full scan); in 2D it centers the plan on the
+point and marks it. `slider=False` hides it.
 
 ```python
 from pymyio.mydar import mydar_cloud_view
@@ -85,6 +89,7 @@ from pymyio.mydar import mydar_cloud_view
 mydar_cloud_view(walk, points=mydar_iphone_cloud(), profile=line)
 mydar_cloud_view(walk, mode="plan")           # start in 2D
 mydar_cloud_view(walk, surface="mesh")        # start on the mesh
+mydar_cloud_view(walk, slider=False)          # no slider along the walk
 ```
 
 ### Plan view
