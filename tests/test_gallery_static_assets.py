@@ -44,8 +44,14 @@ def test_gallery_serves_symlinked_engine_assets():
 
         async def get(path):
             sent = []
+            requested = False
             async def receive():
-                return {{"type": "http.request", "body": b"", "more_body": False}}
+                # Deliver the request once, then wait like a connected client.
+                nonlocal requested
+                if not requested:
+                    requested = True
+                    return {{"type": "http.request", "body": b"", "more_body": False}}
+                await asyncio.Event().wait()
             async def send(message):
                 sent.append(message)
             scope = {{
