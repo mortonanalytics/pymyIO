@@ -16,6 +16,8 @@ from pathlib import Path
 import pandas as pd
 import pymyio
 from shiny import App, reactive, render, ui
+from starlette.routing import Mount
+from starlette.staticfiles import StaticFiles
 
 from pymyio import MyIO, link_charts
 from pymyio.mydar import (
@@ -1513,4 +1515,14 @@ def server(input, output, session):
         )
 
 
-app = App(app_ui, server, static_assets={PYMYIO_STATIC_URL: PYMYIO_STATIC_DIR})
+app = App(app_ui, server)
+# In a checkout, static/myIOapi.js, style.css and lib/*.js are symlinks into
+# vendor/myIO. Shiny's static_assets mount does not follow symlinks that leave
+# the directory, so serve static/ through a mount that does (issue #55).
+app.starlette_app.router.routes.insert(
+    0,
+    Mount(
+        PYMYIO_STATIC_URL.rstrip("/"),
+        app=StaticFiles(directory=PYMYIO_STATIC_DIR, follow_symlink=True),
+    ),
+)
